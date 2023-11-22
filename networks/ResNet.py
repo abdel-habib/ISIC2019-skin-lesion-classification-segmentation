@@ -59,3 +59,34 @@ class ResNetMel(nn.Module):
         # x = self.dropout(x)  # Apply dropout after the pre-trained layers
 
         return x
+
+class SEResnext50_32x4dModel(nn.Module):
+    '''SE ResNeXt is a variant of a ResNext that employs squeeze-and-excitation blocks to enable the network to perform dynamic 
+    channel-wise feature recalibration.
+    
+    https://paperswithcode.com/model/seresnext?variant=seresnext50-32x4d
+    '''
+    def __init__(self, num_classes, pretrained=True):
+        super(SEResnext50_32x4dModel, self).__init__()
+
+        logger.info(f"Using SEResnext50_32x4dModel with configurations: num_classes='{num_classes}', pretrained='{pretrained}'")
+
+        # Load pre-trained ResNeXt-50 32x4d model
+        self.base_model = models.resnext50_32x4d(pretrained=pretrained)
+
+        # Remove the final fully connected layer
+        self.features = nn.Sequential(*list(self.base_model.children())[:-1])
+
+        # Add an adaptive average pooling layer
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # Add the final fully connected layer
+        in_features = self.base_model.fc.in_features
+        self.fc = nn.Linear(in_features, num_classes)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
