@@ -13,7 +13,6 @@ import time
 import os
 import numpy as np
 from loguru import logger
-import logging
 from pathlib import Path
 
 import torch.optim as optim
@@ -23,12 +22,6 @@ from utils.utils import create_directory_if_not_exists, epoch_time
 from utils.loggers import log_to_file
 
 from callbacks.early_stopping import EarlyStopper
-
-from networks.DenseNet import DenseNetMel
-from networks.ResNet import ResNetMel
-from networks.EfficientNet import EfficientNetMel
-from networks.VGG16 import VGG16Mel
-import sys
 
 from torchsummary import summary
 
@@ -43,7 +36,7 @@ class ClassifierExperiment:
                 validate()
         test()
     """
-    def __init__(self, args, train_loader, val_loader, n_classes, checkpoint_file, output_path, c_weights=None):
+    def __init__(self, args, train_loader, val_loader, n_classes, checkpoint_file, Network, output_path, c_weights=None):
         self.max_epochs         = args.max_epochs   # max epochs to iterate
         self.epoch              = 0                 # current epoch
         self._time_start        = ""
@@ -73,8 +66,10 @@ class ClassifierExperiment:
         create_directory_if_not_exists(self.output_path)
 
         # configure the model
-        self.model = DenseNetMel(num_classes=self.n_classes)
+        # self.model = DenseNetMel(num_classes=self.n_classes)
         # self.model = ResNetMel(num_classes=self.n_classes)
+        self.model = Network(num_classes=self.n_classes)
+
         # self.model = ResNetMel(num_classes=self.n_classes, fine_tune = True, num_layers_to_unfreeze=2)
         # self.model = EfficientNetMel(num_classes=self.n_classes, weights_b=1, fine_tune = True, num_layers_to_unfreeze=20)
         # self.model = VGG16Mel(num_classes=self.n_classes)

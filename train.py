@@ -8,6 +8,7 @@ from data_prep.dataset_loader import LoadData
 
 # importing utilities
 from utils.utils import seeding
+from networks.NetworkController import getNetwork
 
 # importing experiments
 from experiments.ClassifierExperiment import ClassifierExperiment
@@ -86,6 +87,7 @@ if __name__ == "__main__":
         val_loader, 
         n_classes, 
         checkpoint_file,
+        Network = getNetwork(args.network_name),
         output_path = snapshot_path, 
         c_weights = train_dataset.get_class_weight())
 
