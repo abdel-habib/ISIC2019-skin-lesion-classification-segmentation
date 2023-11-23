@@ -18,6 +18,9 @@ from pathlib import Path
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
+from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.metrics import cohen_kappa_score
+
 from utils.utils import create_directory_if_not_exists, epoch_time
 from utils.loggers import log_to_file
 
@@ -66,13 +69,7 @@ class ClassifierExperiment:
         create_directory_if_not_exists(self.output_path)
 
         # configure the model
-        # self.model = DenseNetMel(num_classes=self.n_classes)
-        # self.model = ResNetMel(num_classes=self.n_classes)
         self.model = Network(num_classes=self.n_classes)
-
-        # self.model = ResNetMel(num_classes=self.n_classes, fine_tune = True, num_layers_to_unfreeze=2)
-        # self.model = EfficientNetMel(num_classes=self.n_classes, weights_b=1, fine_tune = True, num_layers_to_unfreeze=20)
-        # self.model = VGG16Mel(num_classes=self.n_classes)
         self.model.to(self.device)
 
         # Print the summary
@@ -111,7 +108,8 @@ class ClassifierExperiment:
 
         # Set the model to training mode
         self.model.train()
-        epoch_loss = 0.0
+
+        loss_list = []
 
         # Placeholder for the actual training logic
         # Iterate over the training data
@@ -137,7 +135,7 @@ class ClassifierExperiment:
             self.tensorboard_train_writer.add_scalar('Loss', loss.item(), batch_idx + 1)
 
             # accumulate the epoch losses
-            epoch_loss += loss.item()
+            loss_list.append(loss.item())
 
             # log batch details only when verbose == 2
             if (self.verbose == 2) and (((batch_idx + 1) % 10) == 0):
@@ -146,7 +144,7 @@ class ClassifierExperiment:
                 log_to_file(f"Epoch: {self.epoch+1} Train batch {batch_idx + 1} loss: {loss}, {100*(batch_idx+1)/len(self.train_loader):.1f}% complete", Path(self.logs_path))
 
         # average the losses
-        epoch_loss = epoch_loss / len(self.train_loader)
+        epoch_loss = np.mean(loss_list)
         self.tensorboard_train_writer.add_scalar('Average Epoch Loss', epoch_loss, self.epoch+1)
         
         return epoch_loss
@@ -165,7 +163,8 @@ class ClassifierExperiment:
         # Set the model to evaluation mode
         self.model.eval()
         loss_list = []
-        epoch_loss = 0.0
+        predictions = []
+        targets = []
 
         # Disable gradient calculation
         with torch.no_grad():
@@ -179,28 +178,39 @@ class ClassifierExperiment:
                 # Compute the loss
                 loss = self.loss_function(output, target)
 
-                # log batch details only when verbose == 2
-                if (self.verbose == 2):
-                    print(f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}")
-                    log_to_file(f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}", Path(self.logs_path))
-
                 # Log validation information to Tensorboard
                 self.tensorboard_val_writer.add_scalar('Loss', loss.item(), batch_idx + 1)
 
                 # We report loss that is accumulated across all of validation set
                 loss_list.append(loss.item())
 
-                # accumulate the epoch losses
-                epoch_loss += loss.item()
+                # Accumulate predictions and targets for accuracy, AUC, and Kappa calculation
+                predictions.extend(torch.argmax(output, dim=1).cpu().numpy())
+                targets.extend(target.cpu().numpy())
+                
+                # log batch details only when verbose == 2
+                if (self.verbose == 2):
+                    print(f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}")
+                    log_to_file(f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}", Path(self.logs_path))
 
         # Step the learning rate scheduler based on the validation loss
         self.scheduler.step(np.mean(loss_list))
-        
+
+        # Calculate accuracy and AUC
+        accuracy = accuracy_score(targets, predictions)
+        auc = roc_auc_score(targets, predictions)
+        kappa = cohen_kappa_score(targets, predictions)
+
+        # Log accuracy and AUC
+        self.tensorboard_val_writer.add_scalar('Accuracy', accuracy, self.epoch + 1)
+        self.tensorboard_val_writer.add_scalar('AUC', auc, self.epoch + 1)
+        self.tensorboard_val_writer.add_scalar('Kappa', kappa, self.epoch + 1)
+
         # average the losses
-        epoch_loss = epoch_loss / len(self.val_loader)
+        epoch_loss = np.mean(loss_list)
         self.tensorboard_val_writer.add_scalar('Average Epoch Loss', epoch_loss, self.epoch+1)
         
-        return epoch_loss
+        return epoch_loss, accuracy, auc, kappa
 
     def run_test(self):
         """
@@ -229,7 +239,7 @@ class ClassifierExperiment:
             start_time = time.time()
 
             train_loss = self.train()
-            valid_loss = self.validate()
+            valid_loss, accuracy, auc, kappa = self.validate() 
 
             end_time = time.time()
             epoch_mins, epoch_secs = epoch_time(start_time, end_time)
@@ -237,8 +247,9 @@ class ClassifierExperiment:
             # get the new lr for logging
             after_lr = self.optimizer.param_groups[0]["lr"]
 
-            print(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f}')
-            log_to_file(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f}', 
+            print(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}')
+            
+            log_to_file(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}', 
                         Path(self.logs_path))
 
             # check if validation loss diverges
