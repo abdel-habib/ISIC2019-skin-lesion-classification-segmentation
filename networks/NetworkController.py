@@ -1,5 +1,6 @@
-from networks.ResNet import ResNetMel, SEResnext50_32x4dModel
+from networks.ResNet import ResNetMel, SEResnext50_32x4d
 from networks.DenseNet import DenseNetMel
+from networks.VGG16 import VGG16_BN, VGG16_BN_Attention
 
 def getNetwork(network_name):
     """
