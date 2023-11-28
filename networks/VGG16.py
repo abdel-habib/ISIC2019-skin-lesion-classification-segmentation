@@ -129,6 +129,26 @@ class VGG16_BN_Attention(nn.Module):
         # select the classifier without the final fully connected layer
         self.classifier  = nn.Linear(in_features=512+512+256, out_features=num_classes, bias=True)
 
+        # initialize the weights
+        self.initialize_weights(self.classifier)
+        self.initialize_weights(self.attention_block1)
+        self.initialize_weights(self.attention_block2)
+
+    def initialize_weights(self, module, method='kaiming_normal'):
+        if method == 'kaiming_normal':
+            # initialize the weights using the kaiming_normal method
+            for m in module.modules():
+                if isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0.)
+                elif isinstance(m, nn.BatchNorm2d):
+                    nn.init.constant_(m.weight, 1.)
+                    nn.init.constant_(m.bias, 0.)
+                elif isinstance(m, nn.Linear):
+                    nn.init.normal_(m.weight, 0., 0.01)
+                    nn.init.constant_(m.bias, 0.)
+
     def forward(self, x):
         # block 1
         x = self.conv_block1(x)
