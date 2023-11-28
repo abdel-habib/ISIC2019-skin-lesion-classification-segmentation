@@ -4,12 +4,16 @@ from loguru import logger
 import torch
 
 class EarlyStopper:
-    def __init__(self, patience=1, min_delta=0, trace_func=print):
+    def __init__(self, patience=1, min_delta=0, trace_func=print, logs_path=None):
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
         self.min_validation_loss = float('inf')
         self.trace_func = trace_func
+        self.logs_path = logs_path
+
+        logger.add(self.logs_path, rotation="10 MB", level="INFO")
+
 
     def early_stop(self, validation_loss):
         """

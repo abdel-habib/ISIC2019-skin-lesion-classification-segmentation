@@ -69,10 +69,15 @@ class ClassifierExperiment:
         create_directory_if_not_exists(self.output_path)
 
         # configure the model
-        self.model = Network(num_classes=self.n_classes)
+        if args.normalize_attn:
+            logger.info(f"Normalizing the attention network.")
+            # only for certain networks as VGG16_BN_Attention
+            self.model = Network(num_classes=self.n_classes, normalize_attn=args.normalize_attn)
+        else:
+            self.model = Network(num_classes=self.n_classes)
         self.model.to(self.device)
 
-        # Print the summary
+        # print the summary
         # summary(self.model, input_size=(3, 224, 224))
 
         # configure the loss function
@@ -95,16 +100,15 @@ class ClassifierExperiment:
         self.tensorboard_val_writer = SummaryWriter(comment="_val")
 
         # set up early stopping callback
-        self.early_stopper = EarlyStopper(patience=args.patience, min_delta=0)
+        self.early_stopper = EarlyStopper(patience=args.patience, min_delta=0, trace_func=logger.info, logs_path=self.logs_path)
 
     def train(self):
         """
         This method is executed once per epoch and takes 
         care of model weight update cycle
         """
-        if (self.verbose == 2):
-            print(f"Training epoch {self.epoch+1}...")
-            log_to_file(f"Training epoch {self.epoch+1}...", Path(self.logs_path))
+        logger.info(f"Training epoch {self.epoch+1}...") if (self.verbose == 2) else None
+        log_to_file(f"Training epoch {self.epoch+1}...", Path(self.logs_path))
 
         # Set the model to training mode
         self.model.train()
@@ -138,10 +142,10 @@ class ClassifierExperiment:
             loss_list.append(loss.item())
 
             # log batch details only when verbose == 2
-            if (self.verbose == 2) and (((batch_idx + 1) % 10) == 0):
-                # Output to console on every 10th batch
-                print(f"Epoch: {self.epoch+1} Train batch {batch_idx + 1} loss: {loss}, {100*(batch_idx+1)/len(self.train_loader):.1f}% complete")
-                log_to_file(f"Epoch: {self.epoch+1} Train batch {batch_idx + 1} loss: {loss}, {100*(batch_idx+1)/len(self.train_loader):.1f}% complete", Path(self.logs_path))
+            message = f"Epoch: {self.epoch+1} Train batch {batch_idx + 1} loss: {loss}, {100*(batch_idx+1)/len(self.train_loader):.1f}% complete"
+            should_print = (self.verbose == 2) and (batch_idx + 1) % 10 == 0
+            logger.info(message) if should_print else None
+            log_to_file(message, Path(self.logs_path)) if self.verbose >= 0 and ((batch_idx + 1) % 10 == 0) else None
 
         # average the losses
         epoch_loss = np.mean(loss_list)
@@ -156,9 +160,8 @@ class ClassifierExperiment:
         mode and no_grad needs to be called so that gradients do not 
         propagate
         """
-        if (self.verbose == 2):
-            print(f"Validating epoch {self.epoch+1}...")
-            log_to_file(f"Validating epoch {self.epoch+1}...", Path(self.logs_path))
+        logger.info(f"Validating epoch {self.epoch+1}...") if (self.verbose == 2) else None
+        log_to_file(f"Validating epoch {self.epoch+1}...", Path(self.logs_path))
 
         # Set the model to evaluation mode
         self.model.eval()
@@ -189,9 +192,9 @@ class ClassifierExperiment:
                 targets.extend(target.cpu().numpy())
                 
                 # log batch details only when verbose == 2
-                if (self.verbose == 2):
-                    print(f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}")
-                    log_to_file(f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}", Path(self.logs_path))
+                log = f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}"
+                logger.info(log) if self.verbose == 2 else None
+                log_to_file(log, Path(self.logs_path)) if self.verbose <= 2 else None
 
         # Step the learning rate scheduler based on the validation loss
         self.scheduler.step(np.mean(loss_list))
@@ -247,7 +250,7 @@ class ClassifierExperiment:
             # get the new lr for logging
             after_lr = self.optimizer.param_groups[0]["lr"]
 
-            print(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}')
+            logger.info(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}')
             
             log_to_file(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}', 
                         Path(self.logs_path))
