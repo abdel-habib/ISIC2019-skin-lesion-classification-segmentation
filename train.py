@@ -9,9 +9,11 @@ from data_prep.dataset_loader import LoadData
 # importing utilities
 from utils.utils import seeding
 from networks.NetworkController import getNetwork
+from networks.VGG16 import VGG16_BN_Attention
+from experiments.ClassifierController import getExperiment
 
 # importing experiments
-from experiments.ClassifierExperiment import ClassifierExperiment
+# from experiments.ClassifierExperiment import ClassifierExperiment
 
 if __name__ == "__main__":
     # optional arguments from the command line 
@@ -29,6 +31,7 @@ if __name__ == "__main__":
     parser.add_argument('--img_size', type=int, default=224, help='input image size of network input')
     parser.add_argument('--seed', type=int, default=42, help='random seed value')
     parser.add_argument('--verbose', type=int, default=1, help='verbose value [0:2]')
+    parser.add_argument("--normalize_attn", action='store_true', help='if True, attention map is normalized by softmax; otherwise use sigmoid. This is only for certain networks.')
 
     # get cmd args from the parser 
     args = parser.parse_args()
@@ -81,13 +84,19 @@ if __name__ == "__main__":
         val_dataset, batch_size=args.batch_size, shuffle=True)
 
     # creating an instance of a classifier experiment
-    exp = ClassifierExperiment(
+    experiment = getExperiment(args.experiment_name)
+    network = getNetwork(args.network_name)
+
+    # args.normalize_attn is only possible when the network is VGG16_BN_Attention
+    assert not (args.normalize_attn and network != VGG16_BN_Attention), "normalize_att is expected to be used with args.network_name='VGG16_BN_Attention' only."
+    
+    exp = experiment(
         args, 
         train_loader, 
         val_loader, 
         n_classes, 
         checkpoint_file,
-        Network = getNetwork(args.network_name),
+        Network = network,
         output_path = snapshot_path, 
         c_weights = train_dataset.get_class_weight())
 
