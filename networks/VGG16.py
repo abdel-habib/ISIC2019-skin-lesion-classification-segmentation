@@ -28,7 +28,7 @@ class AttentionBlock(nn.Module):
         organization={Springer}
         }
     '''
-    def __init__(self, in_features_F, in_features_G, out_features, scale_factor):
+    def __init__(self, in_features_F, in_features_G, out_features, scale_factor, normalize_attn=True):
         super(AttentionBlock, self).__init__()
         
         # convolutional blocks
@@ -48,6 +48,9 @@ class AttentionBlock(nn.Module):
         self.attention_map_sigmoid = nn.Sigmoid()
         self.attention_map_softmax = nn.Softmax()
 
+        # check if the attention map should be normalized
+        self.normalize_attn = normalize_attn
+
     def forward(self, _F, _G):
         N, C, W, H = _F.size()  # Extract N, C, W, H from the input tensor F
 
@@ -64,15 +67,24 @@ class AttentionBlock(nn.Module):
         # pixel-wise multiplication using convolution
         responseR = self.conv_attenM(xAttention) # torch.Size([2, 1, 28, 28])
 
-        # Apply softmax along the spatial dimensions
-        # A = self.attention_map_softmax(responseR.view(N, 1, -1), dim=2).view(N, 1, H, W)
-        A = F.softmax(responseR.view(N,1,-1), dim=2).view(N,1,W,H)
+        # check if the attention map should be normalized
+        if self.normalize_attn:    
+            # Apply softmax along the spatial dimensions
+            # A = self.attention_map_softmax(responseR.view(N, 1, -1), dim=2).view(N, 1, H, W)
+            A = F.softmax(responseR.view(N,1,-1), dim=2).view(N,1,W,H)
+        else:
+            # Apply sigmoid along the spatial dimensions
+            A = self.attention_map_sigmoid(responseR)
 
         # Re-weight the local features
         f = torch.mul(A.expand_as(_F), _F)  # batch_size x channels x W x H
-
-        # Weighted sum
-        output = f.view(N, C, -1).sum(dim=2)
+        
+        if self.normalize_attn:    
+            # Weighted sum
+            output = f.view(N, C, -1).sum(dim=2)
+        else:
+            # Global average pooling
+            output = F.adaptive_avg_pool2d(f, (1, 1)).view(N, C)
 
         return A, output
 
@@ -90,9 +102,9 @@ class VGG16_BN_Attention(nn.Module):
         organization={Springer}
         }
     '''
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, normalize_attn=False):
         super(VGG16_BN_Attention, self).__init__()
-        logger.info(f"Using VGG16_BN_Attention with configurations: num_classes='{num_classes}'")
+        logger.info(f"Using VGG16_BN_Attention with configurations: num_classes='{num_classes}', normalize_attn='{normalize_attn}'")
 
         # load vgg16_bn pre-trained model
         vgg16_bn = models.vgg16_bn(pretrained=True)
@@ -107,8 +119,8 @@ class VGG16_BN_Attention(nn.Module):
         self.conv_block5 = nn.Sequential(*list(vgg16_bn.features.children())[34:43])
 
         # attention blocks
-        self.attention_block1 = AttentionBlock(256, 512, 256, 4)
-        self.attention_block2 = AttentionBlock(512, 512, 256, 2)
+        self.attention_block1 = AttentionBlock(256, 512, 256, 4, normalize_attn)
+        self.attention_block2 = AttentionBlock(512, 512, 256, 2, normalize_attn)
 
         # create the remaining layers of the model
         self.avgpool2d = nn.AvgPool2d(7, stride=1)        
@@ -116,14 +128,6 @@ class VGG16_BN_Attention(nn.Module):
 
         # select the classifier without the final fully connected layer
         self.classifier  = nn.Linear(in_features=512+512+256, out_features=num_classes, bias=True)
-
-        # # set requires_grad to False for all layers except the modified layer
-        # for param in self.parameters():
-        #     param.requires_grad = False
-
-        # # set requires_grad to True for the modified layer
-        # self.classifier.requires_grad_(True)
-
 
     def forward(self, x):
         # block 1
