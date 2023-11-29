@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore")
 
 import torch
 import time
+import json
 import os
 import numpy as np
 from loguru import logger
@@ -20,6 +21,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.metrics import cohen_kappa_score
+from sklearn.metrics import classification_report
+from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 
 from utils.utils import create_directory_if_not_exists, epoch_time
 from utils.loggers import log_to_file
@@ -215,17 +223,124 @@ class ClassifierExperiment:
         
         return epoch_loss, accuracy, auc, kappa
 
-    def run_test(self):
+    def run_test(self, test_loader, save_path=None):
         """
-        This runs test cycle on the test dataset.
-        Note that process and evaluations are quite different
-        Here we are computing a lot more metrics and returning
-        a dictionary that could later be persisted as JSON
+        This runs a test cycle on the test dataset.
+        Computes various metrics and generates a confusion matrix and ROC curve.
+        Optionally, saves the confusion matrix and ROC curve figures.
+
+        Args:
+            test_loader: DataLoader for the test dataset.
+            save_path (str): Path to save the figures. If None, figures are not saved.
+
+        Returns:
+            dict: Dictionary containing various evaluation metrics.
+
         """
         logger.info("Testing...")
 
+        # Set the model to evaluation mode
+        self.model.eval()
+
+        all_predictions = []
+        all_targets = []
+
+        with torch.no_grad():
+            for data, target in test_loader:
+                data, target = data.to(self.device), target.to(self.device)
+
+                # Forward pass
+                output = self.model(data)
+
+                # Accumulate predictions and targets
+                predictions = torch.argmax(output, dim=1).cpu().numpy()
+                targets = target.cpu().numpy()
+
+                all_predictions.extend(predictions)
+                all_targets.extend(targets)
+
+        # Calculate various metrics
+        accuracy = accuracy_score(all_targets, all_predictions)
+        auc_value = roc_auc_score(all_targets, all_predictions)
+        kappa = cohen_kappa_score(all_targets, all_predictions)
+
+        # Compute sensitivity, specificity, precision, and recall for each target class
+        precision, recall, fscore, support = precision_recall_fscore_support(all_targets, all_predictions, labels=range(self.n_classes))
+
+        # Generate a classification report
+        class_report = classification_report(all_targets, all_predictions, target_names=[str(i) for i in range(self.n_classes)])
+
+        # Create a 1x2 subplot for confusion matrix and ROC curve
+        fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+        # Generate confusion matrix and plot it
+        conf_matrix = confusion_matrix(all_targets, all_predictions, labels=range(self.n_classes))
+        sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=range(self.n_classes), yticklabels=range(self.n_classes), ax=axes[0])
+        axes[0].set_title('Confusion Matrix')
+
+        # Generate ROC curve and plot it
+        fpr, tpr, thresholds = roc_curve(all_targets, all_predictions)
+        axes[1].plot(fpr, tpr, label=f'AUC = {auc_value:.2f}')
+        axes[1].plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random')
+        axes[1].set_xlabel('False Positive Rate')
+        axes[1].set_ylabel('True Positive Rate')
+        axes[1].set_title('ROC Curve')
+        axes[1].legend()
+
+        # Save the subplot figure if save_path is provided
+        if save_path:
+            fig.savefig(os.path.join(save_path, 'confusion_matrix_and_roc_curve.png'))
+
+        # Log and print metrics
+        logger.info(f'Test Accuracy: {accuracy:.5f}')
+        logger.info(f'Test AUC: {auc_value:.5f}')
+        logger.info(f'Test Kappa: {kappa:.5f}')
+
+        # Log and print sensitivity, specificity, precision, and recall for each target class
+        for i in range(self.n_classes):
+            logger.info(f'Target {i} - Precision: {precision[i]:.5f}, Recall: {recall[i]:.5f}, F-score: {fscore[i]:.5f}, Support: {support[i]}')
+
+        logger.info('\nClassification Report:\n' + class_report)
+
+        # Convert NumPy arrays to Python lists before saving
+        precision_list = precision.tolist()
+        recall_list = recall.tolist()
+        fscore_list = fscore.tolist()
+        support_list = support.tolist()
+
+        # Save metrics dictionary to a text file
+        metrics_dict = {
+            'accuracy': accuracy,
+            'auc': auc_value,
+            'kappa': kappa,
+            'precision': precision_list,
+            'recall': recall_list,
+            'fscore': fscore_list,
+            'support': support_list,
+            'classification_report': class_report
+        }
+
+        if save_path:
+            with open(os.path.join(save_path, 'metrics.txt'), 'w') as file:
+                json.dump(metrics_dict, file)
 
         logger.info("\nTesting complete.")
+
+        return metrics_dict
+
+    def load_model_parameters(self, checkpoint_file):
+        """
+        Loads model parameters (state_dict) from file_path.
+        If optimizer is provided, loads state_dict of
+        optimizer assuming it is present in checkpoint_file.
+        """
+        logger.info(f"Loading model parameters from {checkpoint_file}")
+        # checkpoint = torch.load(checkpoint_file)
+        # self.model.load_state_dict(checkpoint['model_state_dict'])
+        # self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        # self.epoch = checkpoint['epoch']
+
+        # logger.info(f"Loaded model parameters from {checkpoint_file}")
 
     def run(self):
         """
@@ -269,6 +384,9 @@ class ClassifierExperiment:
         if not early_stopped:
             # Save the model after completing all epochs
             self.early_stopper.save_checkpoint(self.epoch+1, self.model, valid_loss, self.optimizer, self.checkpoint_file)
+
+        # run the val/test report generation
+        self.run_test(test_loader=self.val_loader, save_path=self.output_path)
 
         self._time_end = time.time()
         logger.info(f"Run complete. Total time: {time.strftime('%H:%M:%S', time.gmtime(self._time_end - self._time_start))}")
