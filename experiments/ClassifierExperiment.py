@@ -108,7 +108,7 @@ class ClassifierExperiment:
         self.tensorboard_val_writer = SummaryWriter(comment="_val")
 
         # set up early stopping callback
-        self.early_stopper = EarlyStopper(patience=args.patience, min_delta=0, trace_func=logger.info, logs_path=self.logs_path)
+        self.early_stopper = EarlyStopper(patience=args.patience, delta=0, trace_func=logger.info, logs_path=self.logs_path, path=self.checkpoint_file)
 
     def train(self):
         """
@@ -348,7 +348,6 @@ class ClassifierExperiment:
         """
 
         self._time_start = time.time()
-        early_stopped = False  # Flag to track whether early stopping occurred
 
         logger.info("Experiment started.")
 
@@ -365,25 +364,21 @@ class ClassifierExperiment:
             # get the new lr for logging
             after_lr = self.optimizer.param_groups[0]["lr"]
 
+            # handle early stopping and saving model
+            self.early_stopper(
+                validation_loss=valid_loss, 
+                epoch=self.epoch, 
+                model=self.model, 
+                optimizer=self.optimizer)
+        
             logger.info(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}')
             
             log_to_file(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}', 
                         Path(self.logs_path))
-
-            # check if validation loss diverges
-            if self.early_stopper.early_stop(valid_loss):
-                # save model for inferencing
-                self.early_stopper.save_checkpoint(self.epoch+1, self.model, valid_loss, self.optimizer, self.checkpoint_file)
-
-                # set the flag to True to indicate early stopping occurred
-                early_stopped = True
-
-                # break the training loop
+            
+            if self.early_stopper.early_stop:
+                logger.warning(f"Early stopping triggered at epoch {self.epoch+1}. Ending model training.")
                 break
-        
-        if not early_stopped:
-            # Save the model after completing all epochs
-            self.early_stopper.save_checkpoint(self.epoch+1, self.model, valid_loss, self.optimizer, self.checkpoint_file)
 
         # run the val/test report generation
         self.run_test(test_loader=self.val_loader, save_path=self.output_path)
