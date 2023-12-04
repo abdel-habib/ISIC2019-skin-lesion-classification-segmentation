@@ -2,8 +2,11 @@ import torch
 import argparse
 import os
 import sys
+import time
 from glob import glob 
 from loguru import logger
+import numpy as np
+from scipy.stats import mode
 from data_prep.dataset import Dataset 
 from data_prep.dataset_loader import LoadData
 
@@ -12,9 +15,9 @@ from utils.utils import seeding
 from networks.NetworkController import getNetwork
 from networks.VGG16 import VGG16_BN_Attention
 from experiments.ClassifierController import getExperiment
+from sklearn.model_selection import StratifiedKFold
 
-# importing experiments
-# from experiments.ClassifierExperiment import ClassifierExperiment
+from utils.loggers import log_to_file
 
 # Custom log format
 fmt = "{message}"
@@ -24,6 +27,9 @@ config = {
     ],
 }
 logger.configure(**config)
+
+# importing experiments
+# from experiments.ClassifierExperiment import ClassifierExperiment
 
 if __name__ == "__main__":
     # optional arguments from the command line 
@@ -42,10 +48,11 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=42, help='random seed value')
     parser.add_argument('--verbose', type=int, default=1, help='verbose value [0:2]')
     parser.add_argument("--normalize_attn", action='store_true', help='if True, attention map is normalized by softmax; otherwise use sigmoid. This is only for certain networks.')
+    parser.add_argument('--num_folds', type=int, default=5, help='number of folds for cross-validation. This will build a model for each fold.')
 
     # get cmd args from the parser 
     args = parser.parse_args()
-    logger.info(f"Excuting training pipeline with {args.max_epochs} epochs...")
+    logger.info(f"Excuting training pipeline with {args.max_epochs} epochs and {args.num_folds} folds.")
 
     # set paths and dirs
     args.exp = args.experiment_name + '_' + str(args.img_size)
@@ -59,7 +66,8 @@ if __name__ == "__main__":
     checkpoint_file = checkpoint_file + '_bs' + str(args.batch_size)
     checkpoint_file = checkpoint_file + '_lr' + str(args.base_lr)
     checkpoint_file = checkpoint_file + '_seed' + str(args.seed)
-    checkpoint_file = checkpoint_file + '.pth'
+
+    output_path        = os.path.join(snapshot_path, f'{time.strftime("%Y-%m-%d_%H%M", time.gmtime())}_{args.network_name}')
 
     # set seed value
     seeding(args.seed)
@@ -75,41 +83,82 @@ if __name__ == "__main__":
         dataset_path= args.valid_path, 
         class_labels = {'nevus': 0, 'others': 1})
     
-    # create a dataset object with the loaded data
-    train_dataset = Dataset(
-        images_path=train_images, labels=train_labels, transform=True, split="train",
-        input_size=(args.img_size,args.img_size)
-        )
-    
-    val_dataset = Dataset(
-        images_path=val_images, labels=val_labels, transform=True, split="val", 
-        input_size=(args.img_size,args.img_size)
-        )
-    
-    # create train and val data loaders
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True)
-    
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=True)
+    # Use StratifiedKFold for cross-validation
+    skf = StratifiedKFold(n_splits=args.num_folds, shuffle=True, random_state=args.seed)
 
-    # creating an instance of a classifier experiment
+    # Concatenate the training and validation datasets
+    all_images = train_images + val_images
+    all_labels = train_labels + val_labels
+
+    # Create a new instance of the experiment
     experiment = getExperiment(args.experiment_name)
     network = getNetwork(args.network_name)
 
     # args.normalize_attn is only possible when the network is VGG16_BN_Attention
     assert not (args.normalize_attn and network != VGG16_BN_Attention), "normalize_att is expected to be used with args.network_name='VGG16_BN_Attention' only."
-    
-    exp = experiment(
-        args, 
-        train_loader, 
-        val_loader, 
-        n_classes, 
-        checkpoint_file,
-        Network = network,
-        output_path = snapshot_path, 
-        c_weights = train_dataset.get_class_weight())
 
-    # run training
-    exp.run()
+    # Initialize lists to store predictions from each fold
+    all_fold_metrics = []
+    all_val_targets = []
+
+    # Iterate over folds
+    for fold, (train_index, val_index) in enumerate(skf.split(all_images, all_labels)):
+        # Create dataset and loaders for current fold
+        fold_train_dataset = Dataset(
+            images_path=[all_images[i] for i in train_index], 
+            labels=[all_labels[i] for i in train_index], 
+            transform=True, 
+            split="train",
+            input_size=(args.img_size,args.img_size))
+        
+        fold_val_dataset = Dataset(
+            images_path=[all_images[i] for i in val_index], 
+            labels=[all_labels[i] for i in val_index], 
+            transform=True, 
+            split="val", 
+            input_size=(args.img_size,args.img_size))
+        
+        fold_train_loader = torch.utils.data.DataLoader(
+            fold_train_dataset, batch_size=args.batch_size, shuffle=True)
+        
+        fold_val_loader = torch.utils.data.DataLoader(
+            fold_val_dataset, batch_size=args.batch_size, shuffle=True)
+
+        # Add fold number to the checkpoint file name
+        fold_ckp_file = checkpoint_file + f'_fold{fold+1}' + '.pth'
+
+        # Create a new directory for the current fold
+        fold_path          = os.path.join(output_path, f'fold_{fold+1}')
+        
+        # Initialize the experiment 
+        exp = experiment(
+            args, 
+            fold_train_loader, 
+            fold_val_loader, 
+            n_classes, 
+            checkpoint_file = fold_ckp_file,
+            Network = network,
+            fold_path = fold_path, 
+            fold_num = fold+1,
+            c_weights = fold_train_dataset.get_class_weight())
+
+        # run training and validation for current fold
+        exp.run()
+        
+        # run the val/test report generation
+        metrics_dict = exp.run_test(test_loader=fold_val_loader, save_path=fold_path)
+
+        # append the metrics to the list
+        all_fold_metrics.append(metrics_dict)
+    
+    # compute the average metrics across all folds 'accuracy', 'auc', 'kappa'
+    all_fold_metrics = np.array(all_fold_metrics)
+    avg_accuracy = np.mean([fmet['accuracy'] for fmet in all_fold_metrics])
+    avg_auc = np.mean([fmet['auc'] for fmet in all_fold_metrics])
+    avg_kappa = np.mean([fmet['kappa'] for fmet in all_fold_metrics])
+
+    logger.info(f"Average accuracy: {avg_accuracy:.5f}. Average AUC: {avg_auc:.5f}. Average Kappa: {avg_kappa:.5f}")
+
+
+
 

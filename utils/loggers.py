@@ -1,5 +1,15 @@
 from pathlib import Path
 from loguru import logger
+import sys
+
+# Custom log format
+fmt = "{message}"
+config = {
+    "handlers": [
+        {"sink": sys.stderr, "format": fmt},
+    ],
+}
+logger.configure(**config)
 
 def log_to_file(text, filepath):
     '''A function that logs text to a file.

@@ -3,8 +3,17 @@ import torch.nn as nn
 import torchvision.models as models
 import torch.nn.functional as F
 from loguru import logger
-
+import sys
 from torchsummary import summary
+
+# Custom log format
+fmt = "{message}"
+config = {
+    "handlers": [
+        {"sink": sys.stderr, "format": fmt},
+    ],
+}
+logger.configure(**config)
 
 class BilinearInterpolationBlock(nn.Module):
     def __init__(self, scale_factor):
