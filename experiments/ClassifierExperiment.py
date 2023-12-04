@@ -12,6 +12,7 @@ import torch
 import time
 import json
 import os
+import sys
 import numpy as np
 from loguru import logger
 from pathlib import Path
@@ -35,6 +36,15 @@ from utils.loggers import log_to_file
 from callbacks.early_stopping import EarlyStopper
 
 from torchsummary import summary
+
+# Custom log format
+fmt = "{message}"
+config = {
+    "handlers": [
+        {"sink": sys.stderr, "format": fmt},
+    ],
+}
+logger.configure(**config)
 
 class ClassifierExperiment:
     """
@@ -287,6 +297,24 @@ class ClassifierExperiment:
         axes[1].set_title('ROC Curve')
         axes[1].legend()
 
+        # Compute sensitivity and specificity for each target class
+        sensitivity = []
+        specificity = []
+
+        for i in range(self.n_classes):
+            true_positive = conf_matrix[i, i]
+            false_negative = conf_matrix[i, :].sum() - true_positive
+            false_positive = conf_matrix[:, i].sum() - true_positive
+            true_negative = conf_matrix.sum() - (true_positive + false_negative + false_positive)
+
+            # Sensitivity (Recall)
+            sensitivity_class = true_positive / (true_positive + false_negative)
+            sensitivity.append(sensitivity_class)
+
+            # Specificity
+            specificity_class = true_negative / (true_negative + false_positive)
+            specificity.append(specificity_class)
+
         # Save the subplot figure if save_path is provided
         if save_path:
             fig.savefig(os.path.join(save_path, 'confusion_matrix_and_roc_curve.png'))
@@ -298,7 +326,7 @@ class ClassifierExperiment:
 
         # Log and print sensitivity, specificity, precision, and recall for each target class
         for i in range(self.n_classes):
-            logger.info(f'Target {i} - Precision: {precision[i]:.5f}, Recall: {recall[i]:.5f}, F-score: {fscore[i]:.5f}, Support: {support[i]}')
+            logger.info(f'Target {i} - Precision: {precision[i]:.5f}, Recall: {recall[i]:.5f}, F-score: {fscore[i]:.5f}, Sensitivity: {sensitivity[i]}, Specificity: {specificity[i]}, Support: {support[i]}')
 
         logger.info('\nClassification Report:\n' + class_report)
 
