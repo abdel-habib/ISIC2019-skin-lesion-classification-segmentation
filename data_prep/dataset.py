@@ -12,6 +12,15 @@ import pandas as pd
 
 from loguru import logger
 
+# Custom log format
+fmt = "{message}"
+config = {
+    "handlers": [
+        {"sink": sys.stderr, "format": fmt},
+    ],
+}
+logger.configure(**config)
+
 
 class Dataset(data.Dataset):
     """Custom data.Dataset class compatible with data.DataLoader."""
@@ -32,7 +41,7 @@ class Dataset(data.Dataset):
         self.normalize_mean = [0.485, 0.456, 0.406]
         self.normalize_std  = [0.229, 0.224, 0.225]
 
-        logger.info(f"Creating a Dataset instance for {self.split} split.")
+        # logger.info(f"Creating a Dataset instance for {self.split} split.")
 
     def __getitem__(self, index):
         if torch.is_tensor(index):

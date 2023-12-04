@@ -3,6 +3,17 @@ import os
 import numpy as np
 import pandas as pd
 from loguru import logger
+import sys
+
+# Custom log format
+fmt = "{message}"
+config = {
+    "handlers": [
+        {"sink": sys.stderr, "format": fmt},
+    ],
+}
+logger.configure(**config)
+
 
 def LoadData(dataset_path='../datasets/train', class_labels = None):
         """
