@@ -6,6 +6,8 @@ research.md
 todo.md
 *.txt
 
+notebooks/runs
+
 !requirements.txt
 
 !datasets/.gitkeep
