@@ -3,10 +3,8 @@ import argparse
 import os
 import sys
 import time
-from glob import glob 
 from loguru import logger
 import numpy as np
-from scipy.stats import mode
 from data_prep.dataset import Dataset 
 from data_prep.dataset_loader import LoadData
 
@@ -49,6 +47,8 @@ if __name__ == "__main__":
     parser.add_argument('--verbose', type=int, default=1, help='verbose value [0:2]')
     parser.add_argument("--normalize_attn", action='store_true', help='if True, attention map is normalized by softmax; otherwise use sigmoid. This is only for certain networks.')
     parser.add_argument('--num_folds', type=int, default=5, help='number of folds for cross-validation. This will build a model for each fold.')
+    parser.add_argument("--focal_loss", action='store_true', help='if True, focal loss is used; otherwise use cross entropy loss. This is only for multi-class classification.')
+    parser.add_argument("--multi", action='store_true', help='if True, we use the 3 class labels for loading the data.')
 
     # get cmd args from the parser 
     args = parser.parse_args()
@@ -75,13 +75,20 @@ if __name__ == "__main__":
     # load the data from the disk
     # ch1 -> class_labels = {'nevus': 0, 'others': 1}
     # ch2 -> class_labels = {'mel': 0, 'bcc': 1, 'scc': 2}
+    if args.multi:
+        logger.info(f"Loading data with 3 class labels...")
+        _labels = {'mel': 0, 'bcc': 1, 'scc': 2}
+    else:
+        logger.info(f"Loading data with 2 class labels...")
+        _labels = {'nevus': 0, 'others': 1}
+
     _, train_images, train_labels, n_classes = LoadData(
         dataset_path= args.train_path, 
-        class_labels = {'nevus': 0, 'others': 1})
+        class_labels = _labels)
     
     _, val_images, val_labels, n_classes = LoadData(
         dataset_path= args.valid_path, 
-        class_labels = {'nevus': 0, 'others': 1})
+        class_labels = _labels)
     
     # Use StratifiedKFold for cross-validation
     skf = StratifiedKFold(n_splits=args.num_folds, shuffle=True, random_state=args.seed)
@@ -96,6 +103,9 @@ if __name__ == "__main__":
 
     # args.normalize_attn is only possible when the network is VGG16_BN_Attention
     assert not (args.normalize_attn and network != VGG16_BN_Attention), "normalize_att is expected to be used with args.network_name='VGG16_BN_Attention' only."
+
+    # args.focal_loss is only possible when n_classes > 2
+    assert not (args.focal_loss and n_classes == 2), "focal_loss is expected to be used with multi-class classification only."
 
     # Initialize lists to store predictions from each fold
     all_fold_metrics = []
@@ -130,6 +140,10 @@ if __name__ == "__main__":
         # Create a new directory for the current fold
         fold_path          = os.path.join(output_path, f'fold_{fold+1}')
         
+        # get the class weights
+        class_weights = fold_train_dataset.get_class_weight()
+        logger.info(f"Class weights: {class_weights}")
+
         # Initialize the experiment 
         exp = experiment(
             args, 
@@ -140,7 +154,7 @@ if __name__ == "__main__":
             Network = network,
             fold_path = fold_path, 
             fold_num = fold+1,
-            c_weights = fold_train_dataset.get_class_weight())
+            c_weights = class_weights)
 
         # run training and validation for current fold
         exp.run()

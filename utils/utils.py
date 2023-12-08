@@ -94,3 +94,7 @@ def execute_cmd_realtime(command, log=True):
     rc = process.poll()
     return rc
 
+def load_model(model, path):
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
