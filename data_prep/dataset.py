@@ -9,6 +9,7 @@ import albumentations as A
 import numpy as np
 import utils.preprocessor as preprocessor
 import pandas as pd
+from sklearn.utils.class_weight import compute_class_weight
 
 from loguru import logger
 
@@ -125,6 +126,7 @@ class Dataset(data.Dataset):
                 ], p=0.7),
                 A.CLAHE(clip_limit=4.0, p=0.7),
                 A.Transpose(),
+                # A.CoarseDropout(max_height=int(image.size[1] * 0.275), max_width=int(image.size[0] * 0.275), max_holes=1),
                 A.HueSaturationValue(hue_shift_limit=(10, 10), val_shift_limit=(10, 10), sat_shift_limit=(20, 20)),
                 A.Resize(self.input_size[0], self.input_size[0]),
                 A.Normalize(),
@@ -151,12 +153,16 @@ class Dataset(data.Dataset):
         n_classes = len(np.unique(self.labels))
         value_count = pd.DataFrame(self.labels).value_counts()
 
+        if n_classes > 2:
+            # Use compute_class_weight for class weights
+            class_labels = np.unique(self.labels)
+            class_weights = compute_class_weight(class_weight='balanced', classes=class_labels, y=self.labels)
+
+            return class_weights[0], class_weights[1], class_weights[2]
+        
         w0 = value_count[0] / len(self.labels)
         w1 = value_count[1] / len(self.labels)
-        w2 = (value_count[2] / len(self.labels)) if n_classes > 2 else None     
-
-        if n_classes > 2:
-            return w0, w1, w2
+        # w2 = (value_count[2] / len(self.labels)) if n_classes > 2 else None     
         
         return w0, w1
         
