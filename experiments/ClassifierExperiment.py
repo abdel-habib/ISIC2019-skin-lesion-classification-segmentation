@@ -19,6 +19,7 @@ from pathlib import Path
 
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
+import torch.nn.functional as F
 
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.metrics import cohen_kappa_score
@@ -29,9 +30,10 @@ from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-
 from utils.utils import create_directory_if_not_exists, epoch_time
 from utils.loggers import log_to_file
+from metrics.utils import compute_multiclass_auc
+from metrics.loss import FocalLossMultiClass
 
 from callbacks.early_stopping import EarlyStopper
 
@@ -69,6 +71,7 @@ class ClassifierExperiment:
         self.checkpoint_file    = os.path.join(self.output_path, checkpoint_file)
         self.logs_path          = os.path.join(self.output_path, 'experiment_logs.txt')
         self.verbose            = args.verbose
+        self.multi              = args.multi
 
         logger.add(self.logs_path, rotation="10 MB", level="INFO")
 
@@ -99,13 +102,22 @@ class ClassifierExperiment:
         # summary(self.model, input_size=(3, 224, 224))
 
         # configure the loss function
-        if c_weights is not None:
-            cWeight=torch.tensor(c_weights).float().to(self.device) # class weights
-            loss_fx = torch.nn.CrossEntropyLoss(weight = cWeight)
+        if args.focal_loss:
+            logger.info(f"Using focal loss.")
+            if c_weights is not None:
+                cWeight=torch.tensor(c_weights).float().to(self.device) # class weights
+                loss_fx = FocalLossMultiClass(alpha=1, gamma=2, logits=True, weights=cWeight, reduction='mean')
+
+            loss_fx = FocalLossMultiClass(alpha=1, gamma=2, logits=True, reduction='mean')
         else:
+            logger.info(f"Using cross entropy loss.")
+            if c_weights is not None:
+                cWeight=torch.tensor(c_weights).float().to(self.device) # class weights
+                loss_fx = torch.nn.CrossEntropyLoss(weight = cWeight)
+
             loss_fx = torch.nn.CrossEntropyLoss()
 
-        self.loss_function = loss_fx
+        self.loss_function = loss_fx.to(self.device)
 
         # We are using standard SGD method to optimize our weights
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.base_lr)
@@ -125,9 +137,6 @@ class ClassifierExperiment:
         This method is executed once per epoch and takes 
         care of model weight update cycle
         """
-        logger.info(f"Training epoch {self.epoch+1}...") if (self.verbose == 2) else None
-        log_to_file(f"Training epoch {self.epoch+1}...", Path(self.logs_path))
-
         # Set the model to training mode
         self.model.train()
 
@@ -163,7 +172,7 @@ class ClassifierExperiment:
             message = f"Epoch: {self.epoch+1} Train batch {batch_idx + 1} loss: {loss}, {100*(batch_idx+1)/len(self.train_loader):.1f}% complete"
             should_print = (self.verbose == 2) and (batch_idx + 1) % 10 == 0
             logger.info(message) if should_print else None
-            log_to_file(message, Path(self.logs_path)) if self.verbose >= 0 and ((batch_idx + 1) % 10 == 0) else None
+            log_to_file(message, Path(self.logs_path)) if self.verbose <= 1 and ((batch_idx + 1) % 10 == 0) else None
 
         # average the losses
         epoch_loss = np.mean(loss_list)
@@ -178,14 +187,12 @@ class ClassifierExperiment:
         mode and no_grad needs to be called so that gradients do not 
         propagate
         """
-        logger.info(f"Validating epoch {self.epoch+1}...") if (self.verbose == 2) else None
-        log_to_file(f"Validating epoch {self.epoch+1}...", Path(self.logs_path))
-
         # Set the model to evaluation mode
         self.model.eval()
         loss_list = []
         predictions = []
         targets = []
+        probabilties = []
 
         # Disable gradient calculation
         with torch.no_grad():
@@ -205,22 +212,31 @@ class ClassifierExperiment:
                 # We report loss that is accumulated across all of validation set
                 loss_list.append(loss.item())
 
+                # Apply softmax to convert logits to probabilities
+                probs = F.softmax(output, dim=1)
+
                 # Accumulate predictions and targets for accuracy, AUC, and Kappa calculation
-                predictions.extend(torch.argmax(output, dim=1).cpu().numpy())
+                predictions.extend(torch.argmax(probs, dim=1).cpu().numpy())
                 targets.extend(target.cpu().numpy())
+                probabilties.extend(probs.cpu().numpy())
                 
                 # log batch details only when verbose == 2
                 log = f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}"
                 logger.info(log) if self.verbose == 2 else None
-                log_to_file(log, Path(self.logs_path)) if self.verbose <= 2 else None
+                log_to_file(log, Path(self.logs_path)) if self.verbose <= 1 else None
 
         # Step the learning rate scheduler based on the validation loss
         self.scheduler.step(np.mean(loss_list))
 
         # Calculate accuracy and AUC
         accuracy = accuracy_score(targets, predictions)
-        auc = roc_auc_score(targets, predictions)
         kappa = cohen_kappa_score(targets, predictions)
+
+        if self.multi:
+            auc_scores = compute_multiclass_auc(np.array(targets), np.array(probabilties))
+            auc = np.mean(auc_scores)
+        else:
+            auc = roc_auc_score(targets, predictions)
 
         # Log accuracy and AUC
         self.tensorboard_val_writer.add_scalar('Accuracy', accuracy, self.epoch + 1)
@@ -254,6 +270,7 @@ class ClassifierExperiment:
 
         all_predictions = []
         all_targets = []
+        all_props = []
 
         with torch.no_grad():
             for data, target in test_loader:
@@ -262,18 +279,21 @@ class ClassifierExperiment:
                 # Forward pass
                 output = self.model(data)
 
+                # Apply softmax to convert logits to probabilities
+                probs = F.softmax(output, dim=1)
+
                 # Accumulate predictions and targets
-                predictions = torch.argmax(output, dim=1).cpu().numpy()
+                predictions = torch.argmax(probs, dim=1).cpu().numpy()
                 targets = target.cpu().numpy()
 
                 all_predictions.extend(predictions)
                 all_targets.extend(targets)
+                all_props.extend(probs.cpu().numpy())
 
         # Calculate various metrics
         accuracy = accuracy_score(all_targets, all_predictions)
-        auc_value = roc_auc_score(all_targets, all_predictions)
         kappa = cohen_kappa_score(all_targets, all_predictions)
-
+        
         # Compute sensitivity, specificity, precision, and recall for each target class
         precision, recall, fscore, support = precision_recall_fscore_support(all_targets, all_predictions, labels=range(self.n_classes))
 
@@ -288,9 +308,27 @@ class ClassifierExperiment:
         sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=range(self.n_classes), yticklabels=range(self.n_classes), ax=axes[0])
         axes[0].set_title('Confusion Matrix')
 
-        # Generate ROC curve and plot it
-        fpr, tpr, thresholds = roc_curve(all_targets, all_predictions)
-        axes[1].plot(fpr, tpr, label=f'AUC = {auc_value:.2f}')
+        if self.multi:
+            # Convert lists to numpy arrays
+            all_targets = np.array(all_targets)
+            all_props = np.array(all_props)
+
+            auc_scores = compute_multiclass_auc(all_targets, all_props)
+
+            # Generate ROC curve and plot it using One-vs-Rest (OvR) strategy
+            for i in range(self.n_classes):
+                fpr, tpr, _ = roc_curve(all_targets == i, all_props[:, i])
+                auc_value = auc_scores[i]
+                axes[1].plot(fpr, tpr, label=f'Class {i} (AUC = {auc_value:.2f}')
+
+            # set the auc value to the mean of all classes auc scores
+            auc_value = np.mean(auc_scores)
+        else:
+            auc_value = roc_auc_score(all_targets, all_predictions)
+            # Generate ROC curve and plot it
+            fpr, tpr, thresholds = roc_curve(all_targets, all_predictions)
+            axes[1].plot(fpr, tpr, label=f'AUC = {auc_value:.2f}')
+
         axes[1].plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random')
         axes[1].set_xlabel('False Positive Rate')
         axes[1].set_ylabel('True Positive Rate')
@@ -322,6 +360,7 @@ class ClassifierExperiment:
         # Log and print metrics
         logger.info(f'Test Accuracy: {accuracy:.5f}')
         logger.info(f'Test AUC: {auc_value:.5f}')
+        logger.info(f'Test AUC Scores: {auc_scores}') if self.multi else None
         logger.info(f'Test Kappa: {kappa:.5f}')
 
         # Log and print sensitivity, specificity, precision, and recall for each target class
@@ -347,6 +386,9 @@ class ClassifierExperiment:
             'support': support_list,
             'classification_report': class_report
         }
+
+        if self.multi:
+            metrics_dict['auc_scores'] = auc_scores.tolist()
 
         if save_path:
             with open(os.path.join(save_path, 'metrics.txt'), 'w') as file:
@@ -399,11 +441,8 @@ class ClassifierExperiment:
                 model=self.model, 
                 optimizer=self.optimizer)
         
-            logger.info(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}')
-            
-            log_to_file(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | epoch time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.5e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}', 
-                        Path(self.logs_path))
-            
+            logger.info(f'Epoch: {self.epoch+1:02}/{self.max_epochs} | time: {epoch_mins}m {epoch_secs:.04}s | lr: {after_lr:.4e} | train/loss: {train_loss:.5f} | val/loss: {valid_loss:.5f} | val/accuracy: {accuracy:.5f} | val/AUC: {auc:.5f} | val/Kappa: {kappa:.5f}')
+                        
             if self.early_stopper.early_stop:
                 logger.warning(f"Early stopping triggered at epoch {self.epoch+1}. Ending model training.")
                 break

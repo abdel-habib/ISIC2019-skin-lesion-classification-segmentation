@@ -1,4 +1,3 @@
-from experiments.ClassifierAttentionExperiment import ClassifierAttentionExperiment
 from experiments.ClassifierExperimentCV import ClassifierExperimentCV
 from experiments.ClassifierExperiment import ClassifierExperiment
 
