@@ -2,42 +2,39 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class FocalLoss(nn.Module):
-    def __init__(self, gamma=2, weight=None, reduction='mean'):
-        super(FocalLoss, self).__init__()
+class FocalLossMultiClass(nn.Module):
+    def __init__(self, alpha=1, gamma=2, logits=True, weights=None, reduction='mean'):
+        super(FocalLossMultiClass, self).__init__()
         '''
-        Implementation of focal loss function to address class imbalance problem. Focal loss applies a modulating term to the cross entropy loss 
-        in order to focus learning on hard misclassified examples. It is a dynamically scaled cross entropy loss, where the scaling factor decays 
-        to zero as confidence in the correct class increases. 
+        Implementation of the Focal Loss function to address class imbalance problems.
 
         Args:
-            gamma (float): Modulating factor to adjust the rate at which the scaling factor decays. Default: 2
-            weight (tensor): Weighting factor to adjust the rate at which the scaling factor decays. Default: None
-            reduction (string): Reduction option to apply to the loss. Default: 'mean'
-
-        References:
-            Lin, T. Y., Goyal, P., Girshick, R., He, K., & Dollár, P. (2017). Focal loss for dense object detection. 
-            In Proceedings of the IEEE international conference on computer vision (pp. 2980-2988).
+            alpha (float): Weighting factor for the rare class. Default: 1
+            gamma (float): Focusing parameter. Default: 2
+            logits (bool): Whether the inputs are logits or not. Default: True
+            weights (torch.Tensor): Weights for each class. Default: None
+            reduction (str): Reduction option. Default: 'mean'
 
         Returns:
             loss (float): Focal loss value.
         '''
+        self.alpha = alpha
         self.gamma = gamma
-        self.weight = weight
+        self.logits = logits
+        self.weights = weights
         self.reduction = reduction
 
-    def forward(self, input, target):
-        # compute the cross entropy loss
-        ce_loss = -F.cross_entropy(input, target, weight=self.weight, reduction='none')
+    def forward(self, inputs, targets):
+        if not self.logits:
+            # If logits=False, apply softmax to convert inputs to probabilities
+            inputs = F.softmax(inputs, dim=1)
 
-        # compute the sigmoid term
-        pt = torch.exp(ce_loss)
+        # compute the cross entropy losses
+        CE_loss = F.cross_entropy(inputs, targets, weight= self.weights, reduction='none')
 
-        # compute the modulating term
-        modulating_factor = -(1 - pt) ** self.gamma
-
-        # compute the focal loss
-        focal_loss = modulating_factor * ce_loss
+        pt = torch.exp(-CE_loss)
+        # focal_loss = - self.alpha * (1 - pt) ** self.gamma * CE_loss
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * CE_loss
 
         # check reduction option and return loss accordingly
         if self.reduction == 'none':
@@ -48,6 +45,7 @@ class FocalLoss(nn.Module):
             return focal_loss.sum()
         else:
             raise ValueError('Unsupported reduction option.')
+
 
 class DiceLoss(nn.Module):
     def __init__(self, smooth=1):
