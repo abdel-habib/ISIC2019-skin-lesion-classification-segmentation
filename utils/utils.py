@@ -5,7 +5,7 @@ import torch
 import pprint
 import subprocess
 import sys
-from IPython.display import display, HTML
+from IPython.display import display, HTML, Image
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -93,6 +93,7 @@ def execute_cmd_realtime(command, log=True):
 
     rc = process.poll()
     return rc
+
 
 def load_model(model, path):
     checkpoint = torch.load(path)
