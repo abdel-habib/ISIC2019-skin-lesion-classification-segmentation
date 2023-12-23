@@ -191,10 +191,114 @@ class VGG16_BN_Attention(nn.Module):
         # # attention blocks
         att1, op1 = self.attention_block1(pool3, pool5)
         att2, op2 = self.attention_block2(pool4, pool5)
-        # print(op1.shape, op2.shape, x.shape)
+        # print(op1.shape, op2.shape, x.shape) # torch.Size([2, 256]) torch.Size([2, 512]) torch.Size([2, 512])
+        # print(att1.shape, att2.shape) # torch.Size([2, 1, 28, 28]) torch.Size([2, 1, 14, 14])
 
         # concatinate the features
         x = torch.cat((x, op1, op2), dim=1)
+        # print(x.shape) # torch.Size([2, 1280])
+
+        # classifier block
+        x = self.classifier(x)
+        # print(x.shape) # torch.Size([2, 2]) torch.Size([32, 2])
+
+        return x, att1, att2
+
+class VGG16_BN_Attention_P4(nn.Module):
+    '''
+    A modified implementation for 'Melanoma Recognition via Visual Attention'. Original work can be found in the published work by 
+    the author. 
+
+    @inproceedings{yan2019melanoma,
+        title={Melanoma Recognition via Visual Attention},
+        author={Yan, Yiqi and Kawahara, Jeremy and Hamarneh, Ghassan},
+        booktitle={International Conference on Information Processing in Medical Imaging},
+        pages={793--804},
+        year={2019},
+        organization={Springer}
+        }
+    '''
+    def __init__(self, num_classes, normalize_attn=False):
+        super(VGG16_BN_Attention_P4, self).__init__()
+        logger.info(f"Using VGG16_BN_Attention with configurations: num_classes='{num_classes}', normalize_attn='{normalize_attn}'")
+
+        # load vgg16_bn pre-trained model
+        vgg16_bn = models.vgg16_bn(pretrained=True)
+
+        # select each block separately to integrate the attention blocks to the network
+        # Note: we select the conv blocks from the features layers without the first max-pooling layers of each block 
+        # [6, 13, 23, 33, 43]  
+        self.conv_block1 = nn.Sequential(*list(vgg16_bn.features.children())[0:6])
+        self.conv_block2 = nn.Sequential(*list(vgg16_bn.features.children())[7:13])
+        self.conv_block3 = nn.Sequential(*list(vgg16_bn.features.children())[14:23])
+        self.conv_block4 = nn.Sequential(*list(vgg16_bn.features.children())[24:33])
+        self.conv_block5 = nn.Sequential(*list(vgg16_bn.features.children())[34:43])
+
+        # attention blocks
+        self.attention_block2 = AttentionBlock(512, 512, 256, 2, normalize_attn)
+
+        # create the remaining layers of the model
+        self.avgpool2d = nn.AvgPool2d(7, stride=1)        
+        self.maxpool2d = nn.MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+
+        # select the classifier without the final fully connected layer
+        self.classifier  = nn.Linear(in_features=512+512, out_features=num_classes, bias=True)
+
+        # initialize the weights
+        self.initialize_weights(self.classifier)
+        self.initialize_weights(self.attention_block2)
+
+    def initialize_weights(self, module, method='kaiming_normal'):
+        if method == 'kaiming_normal':
+            # initialize the weights using the kaiming_normal method
+            for m in module.modules():
+                if isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0.)
+                elif isinstance(m, nn.BatchNorm2d):
+                    nn.init.constant_(m.weight, 1.)
+                    nn.init.constant_(m.bias, 0.)
+                elif isinstance(m, nn.Linear):
+                    nn.init.normal_(m.weight, 0., 0.01)
+                    nn.init.constant_(m.bias, 0.)
+
+    def forward(self, x):
+        # block 1
+        x = self.conv_block1(x)
+        pool1 = self.maxpool2d(x)
+
+        # block 2
+        x = self.conv_block2(pool1)
+        pool2 = self.maxpool2d(x)
+
+        # block 3
+        x = self.conv_block3(pool2)
+        pool3 = self.maxpool2d(x)
+
+        # block 4
+        x = self.conv_block4(pool3)
+        pool4 = self.maxpool2d(x)
+
+        # block 5
+        x = self.conv_block5(pool4)
+        pool5 = self.maxpool2d(x)
+
+        N, C, __, __ = pool5.size()
+
+        # # AdaptiveAvgPool2d
+        x = self.avgpool2d(pool5)
+        
+        # reshape the tensor to make it possible for concatenation
+        x = x.view(N, C, -1)  # flatten the tensor
+        x = x.mean(dim=-1)  # take the mean along the spatial dimensions
+
+        # # attention blocks
+        att2, op2 = self.attention_block2(pool4, pool5)
+        # print(op1.shape, op2.shape, x.shape)
+
+        # concatinate the features
+        x = torch.cat((x, op2), dim=1)
         # print(x.shape)
 
         # classifier block

@@ -1,5 +1,7 @@
 from experiments.ClassifierExperimentCV import ClassifierExperimentCV
 from experiments.ClassifierExperiment import ClassifierExperiment
+from experiments.ClassifierSegExperiment import ClassifierSegExperiment
+from experiments.ClassifierSegExperimentCV import ClassifierSegExperimentCV
 
 def getExperiment(experiment_name):
     '''

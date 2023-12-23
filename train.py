@@ -30,6 +30,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--train_path', type=str, default='datasets/train', help='root dir for training data')
     parser.add_argument('--valid_path', type=str, default='datasets/val', help='root dir for validation data')
+    parser.add_argument('--train_masks_path', type=str, default=None, help='(Optional) root dir for training masks data. Default = None')
     parser.add_argument('--output', type=str, default='outputs', help="output dir for saving results")
     parser.add_argument('--experiment_name', type=str, default='exp0001', help='experiment name')
     parser.add_argument('--network_name', type=str, default='DenseNet', help='network name')
@@ -74,23 +75,38 @@ if __name__ == "__main__":
     else:
         logger.info(f"Loading data with 2 class labels...")
         _labels = {'nevus': 0, 'others': 1}
-
-    _, train_images, train_labels, n_classes = LoadData(
+    
+    # dataset_df, images, masks, labels, n_classes
+    _, train_images, train_masks, train_labels, n_classes = LoadData(
         dataset_path= args.train_path, 
+        masks_path= args.train_masks_path,
         class_labels = _labels)
     
-    _, val_images, val_labels, n_classes = LoadData(
+    _, val_images, _, val_labels,  n_classes = LoadData(
         dataset_path= args.valid_path, 
         class_labels = _labels)
     
+    if args.train_masks_path:
+        logger.info("Using segmentation masks for training...")
+        logger.info(f"train_images: {len(train_images)}, train_masks: {len(train_masks)}, train_labels: {len(train_labels)}")
+        
+        # asserting 
+        assert len(train_images) == len(train_masks), "Number of training images and masks should be the same."
+    
     # create a dataset object with the loaded data
     train_dataset = Dataset(
-        images_path=train_images, labels=train_labels, transform=True, split="train",
+        images_path=train_images, 
+        labels=train_labels, 
+        masks_path=train_masks,
+        transform=True, split="train",
         input_size=(args.img_size,args.img_size)
         )
     
     val_dataset = Dataset(
-        images_path=val_images, labels=val_labels, transform=True, split="val", 
+        images_path=val_images, 
+        labels=val_labels, 
+        transform=True, 
+        split="val", 
         input_size=(args.img_size,args.img_size)
         )
     

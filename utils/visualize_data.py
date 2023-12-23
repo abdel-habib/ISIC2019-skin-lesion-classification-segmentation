@@ -28,7 +28,7 @@ def display_CV2_image(img):
     plt.axis('off')
     plt.show()
 
-def visualize_batch(images, labels, dataset_type):
+def visualize_batch(images, labels, dataset_type, mask=False):
     """
         Visualize a batch of images with their labels.
 
@@ -48,20 +48,22 @@ def visualize_batch(images, labels, dataset_type):
 
     # iterate on the batch images
     for i in range(0, batch_size):
-        # get the image and transpose it to (H, W, C)
-        image = np.transpose(images[i], (1,2,0))
+        image = images[i]
+        if not mask:
+            # get the image and transpose it to (H, W, C)
+            image = np.transpose(image, (1,2,0))
 
-        # denormalize from the augmentation
-        image = denormalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            # denormalize from the augmentation
+            image = denormalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
-        # standerdize to [0, 255]
-        image = min_max_normalization(image, 255).astype('uint8')
-        
+            # standerdize to [0, 255]
+            image = min_max_normalization(image, 255).astype('uint8')
+            
         # Display the image
         subplot = figure.add_subplot(8, batch_size//4, i + 1)
         subplot.axis('off')
         subplot.set_title(labels[i].item())
-        plt.imshow(image)
+        plt.imshow(image, cmap='gray' if mask else None)
 
     plt.show()
     

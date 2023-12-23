@@ -35,12 +35,14 @@ if __name__ == "__main__":
 
     parser.add_argument('--train_path', type=str, default='datasets/train', help='root dir for training data')
     parser.add_argument('--valid_path', type=str, default='datasets/val', help='root dir for validation data')
+    parser.add_argument('--train_masks_path', type=str, default=None, help='(Optional) root dir for training masks data. Default = None')
+    parser.add_argument('--valid_masks_path', type=str, default=None, help='(Optional) root dir for validation masks data. Must be passed when the train masks are used. Default is None.')
     parser.add_argument('--output', type=str, default='outputs', help="output dir for saving results")
     parser.add_argument('--experiment_name', type=str, default='exp0001', help='experiment name')
     parser.add_argument('--network_name', type=str, default='DenseNet', help='network name')
     parser.add_argument('--max_epochs', type=int, default=50, help='maximum epoch number to train')
-    parser.add_argument('--batch_size', type=int, default=32, help='batch_size per gpu')
-    parser.add_argument('--base_lr', type=float, default=0.0001, help='network learning rate')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch_size per gpu') # increase the batch size
+    parser.add_argument('--base_lr', type=float, default=0.0001, help='network learning rate') # 0.0001 add a zero to decrease
     parser.add_argument('--patience', type=int, default=5, help='patience for lr and early stopping scheduler')
     parser.add_argument('--img_size', type=int, default=224, help='input image size of network input')
     parser.add_argument('--seed', type=int, default=42, help='random seed value')
@@ -82,21 +84,34 @@ if __name__ == "__main__":
         logger.info(f"Loading data with 2 class labels...")
         _labels = {'nevus': 0, 'others': 1}
 
-    _, train_images, train_labels, n_classes = LoadData(
+    # dataset_df, images, masks, labels, n_classes
+    _, train_images, train_masks, train_labels, n_classes = LoadData(
         dataset_path= args.train_path, 
+        masks_path= args.train_masks_path,
         class_labels = _labels)
     
-    _, val_images, val_labels, n_classes = LoadData(
+    _, val_images, val_masks, val_labels,  n_classes = LoadData(
         dataset_path= args.valid_path, 
+        masks_path = args.valid_masks_path,
         class_labels = _labels)
-    
+
+    if args.train_masks_path and args.valid_masks_path:
+        logger.info("Using segmentation masks for training...")
+        logger.info(f"train_images: {len(train_images)}, train_masks: {len(train_masks)}, train_labels: {len(train_labels)}")
+        logger.info(f"val_images: {len(val_images)}, val_masks: {len(val_masks)}, val_labels: {len(val_labels)}")
+        
+        # asserting 
+        assert len(train_images) == len(train_masks), "Number of training images and masks should be the same."
+        assert len(val_images) == len(val_masks), "Number of valid images and masks should be the same."
+
     # Use StratifiedKFold for cross-validation
     skf = StratifiedKFold(n_splits=args.num_folds, shuffle=True, random_state=args.seed)
 
     # Concatenate the training and validation datasets
     all_images = train_images + val_images
     all_labels = train_labels + val_labels
-
+    all_masks  = train_masks  + val_masks # we need the val masks as we combine the train and val when we split!
+    
     # Create a new instance of the experiment
     experiment = getExperiment(args.experiment_name)
     network = getNetwork(args.network_name)
@@ -117,6 +132,7 @@ if __name__ == "__main__":
         fold_train_dataset = Dataset(
             images_path=[all_images[i] for i in train_index], 
             labels=[all_labels[i] for i in train_index], 
+            masks_path = [all_masks[i] for i in train_index] if args.train_masks_path and args.valid_masks_path else None,
             transform=True, 
             split="train",
             input_size=(args.img_size,args.img_size))

@@ -1,6 +1,9 @@
+
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = 'MIG-69a8ded4-a632-5ad1-8445-c2513c997b19' # this is your assigned UUID
+
 import torch
 import argparse
-import os
 import sys
 from loguru import logger
 from data_prep.dataset import Dataset 
@@ -54,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument('--verbose', type=int, default=1, help='verbose value [0:2]')
     parser.add_argument("--multi", action='store_true', help='if True, we use the 3 class labels for loading the data.')
     parser.add_argument("--report", action='store_true', help='if True, we evaluate the model on the available labels and save the report.')
+    parser.add_argument("--ensemble", action='store_true', help='if True, we search in the folds to evaluate the ensemble.')
 
     # get cmd args from the parser 
     args = parser.parse_args()
@@ -72,7 +76,7 @@ if __name__ == "__main__":
     logger.info(f"Constructed output path: {output_path}. Searching for models...")
 
     # get the models
-    models_paths = sorted(glob(os.path.join(output_path, "***", "*.pth"), recursive=True))
+    models_paths = sorted(glob(os.path.join(output_path, "***" if args.ensemble else '', "*.pth"), recursive=True))
     
     # check if the models are found
     if len(models_paths) == 0:
@@ -95,7 +99,7 @@ if __name__ == "__main__":
     logger.info(f"Dataset labels: {_labels} dictionary.")
 
     # load the data from the disk
-    test_dataset_df, test_images, test_labels, n_classes = LoadData(
+    test_dataset_df, test_images, _, test_labels, n_classes = LoadData(
         dataset_path= args.test_path, 
         class_labels = _labels)
     # print(test_labels)
@@ -111,9 +115,12 @@ if __name__ == "__main__":
     
     # log the length of the dataset
     logger.info(f"Dataset length: {len(test_dataset_df)}")
+
+    # set the correct device
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     # loading the models
-    models = [network(num_classes=n_classes) for _ in range(len(models_paths))]
+    models = [network(num_classes=n_classes).to(device) for _ in range(len(models_paths))]
     for i, path in enumerate(models_paths):
         load_model(models[i], path)
     
@@ -127,18 +134,20 @@ if __name__ == "__main__":
     # iterate over the test data
     with torch.no_grad():
         for images, labels in tqdm(test_dataloader, desc="Inference"):
+            images, labels = images.to(device), labels.to(labels)
+
             # get the true labels
             true_labels.extend(labels.numpy()) if args.report else None
 
             # iterate over the models
             for j, model in enumerate(models):
                 # get the predictions
-                output = model(images)
+                output, _, _ = model(images)
                 probs = F.softmax(output, dim=1)
                 predictions = torch.argmax(probs, dim=1)
 
-                all_predictions[j].extend(predictions.numpy())
-                all_probabilities[j].extend(probs.numpy())
+                all_predictions[j].extend(predictions.cpu().numpy())
+                all_probabilities[j].extend(probs.cpu().numpy())
                 
     # convert the predictions to numpy array
     all_predictions = np.array(all_predictions)

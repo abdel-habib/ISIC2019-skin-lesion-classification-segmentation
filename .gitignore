@@ -1,4 +1,6 @@
 datasets/*
+datasets_masks/*
+
 outputs/*
 outputs_1/*
 runs/*

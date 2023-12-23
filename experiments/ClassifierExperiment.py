@@ -7,11 +7,12 @@ import warnings
 # Ignore all warnings
 warnings.filterwarnings("ignore")
 
+import os
+# os.environ["CUDA_VISIBLE_DEVICES"] = 'MIG-69a8ded4-a632-5ad1-8445-c2513c997b19' # this is your assigned UUID
 
 import torch
 import time
 import json
-import os
 import sys
 import numpy as np
 from loguru import logger
@@ -80,7 +81,7 @@ class ClassifierExperiment:
         # checking if CUDA is available
         if not torch.cuda.is_available():
             logger.warning("WARNING: No CUDA device is found. This may take significantly longer!")
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # cuda:0
 
         # asssert the verbose level
         # 0: no verbose, 1: epoch level logging, 2: 
@@ -151,7 +152,7 @@ class ClassifierExperiment:
             self.optimizer.zero_grad()
 
             # Forward pass
-            output = self.model(data)
+            output, _, _ = self.model(data)
 
             # Compute the loss
             loss = self.loss_function(output, target)
@@ -201,7 +202,7 @@ class ClassifierExperiment:
                 data, target = data.to(self.device), target.to(self.device)
 
                 # Forward pass
-                output = self.model(data)
+                output, _, _ = self.model(data)
 
                 # Compute the loss
                 loss = self.loss_function(output, target)
@@ -277,7 +278,7 @@ class ClassifierExperiment:
                 data, target = data.to(self.device), target.to(self.device)
 
                 # Forward pass
-                output = self.model(data)
+                output, _, _ = self.model(data)
 
                 # Apply softmax to convert logits to probabilities
                 probs = F.softmax(output, dim=1)

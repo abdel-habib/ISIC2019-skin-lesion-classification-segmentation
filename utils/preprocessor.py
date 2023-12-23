@@ -121,31 +121,28 @@ def extract_hair(img):
     # Convert RGB to grayscale
     img_grayscale = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    clip_limit = 1.0 # 10.0
-    tile_size = 10 # 6
-    CLAHE = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_size,tile_size))
-    img_CLAHE = CLAHE.apply(img_grayscale)
+    # clip_limit = 1.0 # 10.0
+    # tile_size = 10 # 6
+    # CLAHE = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_size,tile_size))
+    # img_CLAHE = CLAHE.apply(img_grayscale)
 
     # Apply Gaussian filter
-    filter_size = 5
-    filtered_image = cv2.GaussianBlur(img_CLAHE, (filter_size, filter_size), 0)
+    # filter_size = 5
+    # filtered_image = cv2.GaussianBlur(img_CLAHE, (filter_size, filter_size), 0)
 
-    # Canny edge detection
-    # Calculate the median pixel value of the image
-    median_value = np.median(filtered_image)
-    # Define high and low thresholds for Canny
-    high_threshold = median_value + 75
-    low_threshold = median_value - 75
-    # Apply Canny edge detection with the selected thresholds
-    edges = cv2.Canny(filtered_image, low_threshold, high_threshold)
+    # Blackhat filter with cross-shaped structural element
+    kernel_size = 17
+    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (kernel_size, kernel_size))
+    blackhat = cv2.morphologyEx(img_grayscale, cv2.MORPH_BLACKHAT, kernel)
 
-    # Dilation
-    # Define the size of the dilation kernel (structuring element)
-    kernel_size = (9, 9)  # Adjust the size as needed
-    # Perform dilation
-    dilated_image = cv2.dilate(edges, kernel=cv2.getStructuringElement(cv2.MORPH_ELLIPSE, kernel_size))
+    # Binary thresholding
+    _, binary_thresh = cv2.threshold(blackhat, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
-    inpainted_img = cv2.inpaint(img, dilated_image, inpaintRadius=5, flags=cv2.INPAINT_TELEA) # INPAINT_NS
+    # dilate to increase the size of the hair area for inpainting
+    dilated_image = cv2.dilate(binary_thresh, kernel=cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5)))
+
+    # Inpainting
+    inpainted_img = cv2.inpaint(img, dilated_image, inpaintRadius=5, flags=cv2.INPAINT_TELEA)
 
     return inpainted_img  
     
