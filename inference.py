@@ -94,15 +94,28 @@ if __name__ == "__main__":
             _labels = {'nevus': 0, 'others': 1}
     else:
         logger.info(f"Loading data with unknown class labels from {args.test_path} path...")
-        _labels = {'testX': -1}
+        # random labels to test
+        # note as we count the labels based on the folder directory, we need to force this when the test data is passed to be based on the length
+        # of the labels dictionary
+        if args.multi:
+            _labels = {'testX': -911, 'testY': -922, 'testZ': -933}
+        else:
+            _labels = {'testX': -911, 'testY': -922}
 
     logger.info(f"Dataset labels: {_labels} dictionary.")
 
     # load the data from the disk
+    # check that the data is loaded by order, as we use sorted() inside here
     test_dataset_df, test_images, _, test_labels, n_classes = LoadData(
         dataset_path= args.test_path, 
         class_labels = _labels)
     # print(test_labels)
+
+    if "test" in args.test_path:
+        print("Forcing n_classes to be based on the length of the labels dictionary...")
+        print(f"Before: {n_classes}")
+        n_classes = len(_labels)
+        print(f"After: {n_classes}")
     
     # create a dataset object with the loaded data
     test_dataset = Dataset(
@@ -164,7 +177,7 @@ if __name__ == "__main__":
 
     # export the results into a csv file
     result_df = pd.DataFrame({'Majority_Vote': majority_vote})
-    output_csv_path = os.path.join(output_path, f'{args.experiment_name}_{args.img_size}_epo{args.max_epochs}_bs{args.batch_size}_lr{args.base_lr}_s{args.seed}_{args.timeframe}_{args.network_name}.csv')
+    output_csv_path = os.path.join(output_path, f'{args.test_path.split("/")[-1]}_{args.experiment_name}_{args.img_size}_epo{args.max_epochs}_bs{args.batch_size}_lr{args.base_lr}_s{args.seed}_{args.timeframe}_{args.network_name}.csv')
     result_df.to_csv(output_csv_path, index=False, header=False)
     logger.info(f"Results exported to: {output_csv_path}")
 
