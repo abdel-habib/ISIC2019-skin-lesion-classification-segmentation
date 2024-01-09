@@ -40,15 +40,6 @@ from callbacks.early_stopping import EarlyStopper
 
 from torchsummary import summary
 
-# Custom log format
-fmt = "{message}"
-config = {
-    "handlers": [
-        {"sink": sys.stderr, "format": fmt},
-    ],
-}
-logger.configure(**config)
-
 class ClassifierExperiment:
     """
     This class implements the basic life cycle for a classification task with different classifier architectures.
@@ -77,6 +68,15 @@ class ClassifierExperiment:
         logger.add(self.logs_path, rotation="10 MB", level="INFO")
 
         logger.info(f"Creating a classifier experiment using {args.network_name} network.")
+        
+        # Custom log format
+        fmt = "{message}"
+        config = {
+            "handlers": [
+                {"sink": sys.stderr, "format": fmt},
+            ],
+        }
+        logger.configure(**config)
 
         # checking if CUDA is available
         if not torch.cuda.is_available():
@@ -120,7 +120,7 @@ class ClassifierExperiment:
 
         self.loss_function = loss_fx.to(self.device)
 
-        # We are using standard SGD method to optimize our weights
+        # We are using standard adam method to optimize our weights
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.base_lr)
 
         # Scheduler helps us update learning rate automatically
@@ -173,7 +173,7 @@ class ClassifierExperiment:
             message = f"Epoch: {self.epoch+1} Train batch {batch_idx + 1} loss: {loss}, {100*(batch_idx+1)/len(self.train_loader):.1f}% complete"
             should_print = (self.verbose == 2) and (batch_idx + 1) % 10 == 0
             logger.info(message) if should_print else None
-            log_to_file(message, Path(self.logs_path)) if self.verbose <= 1 and ((batch_idx + 1) % 10 == 0) else None
+            # log_to_file(message, Path(self.logs_path)) if self.verbose <= 1 and ((batch_idx + 1) % 10 == 0) else None
 
         # average the losses
         epoch_loss = np.mean(loss_list)
@@ -224,7 +224,7 @@ class ClassifierExperiment:
                 # log batch details only when verbose == 2
                 log = f"Batch {batch_idx + 1}. Data shape {data.shape} Loss {loss}"
                 logger.info(log) if self.verbose == 2 else None
-                log_to_file(log, Path(self.logs_path)) if self.verbose <= 1 else None
+                # log_to_file(log, Path(self.logs_path)) if self.verbose <= 1 else None
 
         # Step the learning rate scheduler based on the validation loss
         self.scheduler.step(np.mean(loss_list))
