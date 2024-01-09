@@ -61,7 +61,7 @@ class AdvancedHairAugmentation(A.ImageOnlyTransform):
         hair_images = [im for im in os.listdir(self.hairs_folder) if 'png' in im]
 
         for _ in range(n_hairs):
-            hair = cv2.imread(os.path.join(self.hairs_folder, random.choice(hair_images)))
+            hair = cv2.imread(os.path.join(self.hairs_folder, random.choice(hair_images)))  
             hair = cv2.flip(hair, random.choice([-1, 0, 1]))
             hair = cv2.rotate(hair, random.choice([0, 1, 2]))
 
