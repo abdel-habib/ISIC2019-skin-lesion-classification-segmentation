@@ -44,7 +44,7 @@ class MinMaxNormalization(A.ImageOnlyTransform):
 
 class AdvancedHairAugmentation(A.ImageOnlyTransform):
     '''
-    https://arxiv.org/pdf/1809.02568.pdf
+    source: https://www.kaggle.com/c/siim-isic-melanoma-classification/discussion/159176 
     '''
     def __init__(self, hairs: int = 5, hairs_folder: str = "" , always_apply=False, p=0.5):
         self.hairs = hairs
