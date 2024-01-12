@@ -15,6 +15,7 @@ Table of Contents
    * [Lesion Segmentation](#lesion-segmentation)
    * [Base Architecture](#base-architecture)
    * [Ensemble Architecture](#ensemble-architecture)
+   * [Grad-CAM](#grad-cam)
 <!--te-->
 
 
@@ -71,3 +72,9 @@ Ensemble Architecture
 We took it a step further to improve the results obtained from this base model by building an ensemble pipeline that trains using k-fold splits of the datasets, and combine the results using either majority voting or weighted voting. The next figure demonestrates the ensemble approach.
 
 ![](./figures/ensemble-arch.png)
+
+Grad-CAM
+==========
+We also visualized the attention map using the same approach presented by the author cited previously. To visualize the results, you could either visualize while running the inference by adding a `-gradcam` flag to the command, or in `./notebooks/6_GradCAM_viz.ipynb` notebook.
+
+![](./figures/grad-cam.png)
