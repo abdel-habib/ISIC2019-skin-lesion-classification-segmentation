@@ -17,7 +17,7 @@ Table of Contents
    * [Ensemble Architecture](#ensemble-architecture)
    * [Grad-CAM](#grad-cam)
    * [Model Training](#model-training)
-   * [Inference](#model-inference)
+   * [Inference](#inference)
 <!--te-->
 
 
