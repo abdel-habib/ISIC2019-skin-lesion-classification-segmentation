@@ -16,6 +16,7 @@ Table of Contents
    * [Base Architecture](#base-architecture)
    * [Ensemble Architecture](#ensemble-architecture)
    * [Grad-CAM](#grad-cam)
+   * [Model Training](#model-training)
 <!--te-->
 
 
@@ -78,3 +79,70 @@ Grad-CAM
 We also visualized the attention map using the same approach presented by the author cited previously. To visualize the results, you could either visualize while running the inference by adding a `-gradcam` flag to the command, or in `./notebooks/6_GradCAM_viz.ipynb` notebook.
 
 ![](./figures/grad-cam.png)
+
+
+Model Training
+===========
+To train the model, you could either run the following command as in the notebooks from a command line, or from a notebook as the developed examples. Take note that this will take extremely long time if GPU doesn't exist.
+
+To train the base model for the binary problem (challenge 1):
+```
+python ../train.py --train_path "../datasets/challenge1/train" \
+            --train_masks_path "../datasets_masks/challenge1/train" \
+            --valid_path "../datasets/challenge1/val" \
+            --experiment_name "ClassifierSegExperiment" \
+            --network_name "VGG16_BN_Attention" \
+            --max_epochs "50" \
+            --base_lr "0.00001" \
+            --batch_size "32" \
+            --verbose "2"
+```
+
+To train the ensemble for the binary problem (challenge 1):
+```
+python ../train_cv.py --train_path "../datasets/challenge1/train" \
+            --train_masks_path "../datasets_masks/challenge1/train" \
+            --valid_masks_path "../datasets_masks/challenge1/val"\
+            --valid_path "../datasets/challenge1/val" \
+            --experiment_name "ClassifierSegExperimentCV" \
+            --network_name "VGG16_BN_Attention" \
+            --max_epochs "50" \
+            --base_lr "0.00001" \
+            --num_folds "5" \
+            --batch_size "32" \
+            --verbose "2"
+```
+
+
+To train the base model for the multi-class problem (challenge 2):
+```
+python ../train.py --train_path "../datasets/challenge2/train" \
+            --train_masks_path "../datasets_masks/challenge2/train" \
+            --valid_path "../datasets/challenge2/val" \
+            --experiment_name "ClassifierSegExperiment" \
+            --network_name "VGG16_BN_Attention" \
+            --max_epochs "50" \
+            --base_lr "0.00001" \
+            --batch_size "32" \
+            --verbose "2" \
+            --focal_loss \
+            --multi
+```
+
+To train the ensemble for the multi-class problem (challenge 2):
+```
+python ../train_cv.py \
+            --train_path "../datasets/challenge2/train" \
+            --train_masks_path "../datasets_masks/challenge2/train" \
+            --valid_path "../datasets/challenge2/val" \
+            --valid_masks_path "../datasets_masks/challenge2/val"\
+            --experiment_name "ClassifierSegExperimentCV" \
+            --network_name "VGG16_BN_Attention" \
+            --max_epochs "50" \
+            --base_lr "0.00001" \
+            --num_folds "5" \
+            --batch_size "32" \
+            --verbose "1" \
+            --focal_loss \
+            --multi
+```
