@@ -17,6 +17,7 @@ Table of Contents
    * [Ensemble Architecture](#ensemble-architecture)
    * [Grad-CAM](#grad-cam)
    * [Model Training](#model-training)
+   * [Inference](#model-inference)
 <!--te-->
 
 
@@ -87,7 +88,7 @@ To train the model, you could either run the following command as in the noteboo
 
 To train the base model for the binary problem (challenge 1):
 ```
-python ../train.py --train_path "../datasets/challenge1/train" \
+python ./train.py --train_path "../datasets/challenge1/train" \
             --train_masks_path "../datasets_masks/challenge1/train" \
             --valid_path "../datasets/challenge1/val" \
             --experiment_name "ClassifierSegExperiment" \
@@ -100,7 +101,7 @@ python ../train.py --train_path "../datasets/challenge1/train" \
 
 To train the ensemble for the binary problem (challenge 1):
 ```
-python ../train_cv.py --train_path "../datasets/challenge1/train" \
+python ./train_cv.py --train_path "../datasets/challenge1/train" \
             --train_masks_path "../datasets_masks/challenge1/train" \
             --valid_masks_path "../datasets_masks/challenge1/val"\
             --valid_path "../datasets/challenge1/val" \
@@ -116,7 +117,7 @@ python ../train_cv.py --train_path "../datasets/challenge1/train" \
 
 To train the base model for the multi-class problem (challenge 2):
 ```
-python ../train.py --train_path "../datasets/challenge2/train" \
+python ./train.py --train_path "../datasets/challenge2/train" \
             --train_masks_path "../datasets_masks/challenge2/train" \
             --valid_path "../datasets/challenge2/val" \
             --experiment_name "ClassifierSegExperiment" \
@@ -131,7 +132,7 @@ python ../train.py --train_path "../datasets/challenge2/train" \
 
 To train the ensemble for the multi-class problem (challenge 2):
 ```
-python ../train_cv.py \
+python ./train_cv.py \
             --train_path "../datasets/challenge2/train" \
             --train_masks_path "../datasets_masks/challenge2/train" \
             --valid_path "../datasets/challenge2/val" \
@@ -145,4 +146,43 @@ python ../train_cv.py \
             --verbose "1" \
             --focal_loss \
             --multi
+```
+
+Inference
+===========
+To run the inference on the test set (or the val for validation), you can run the following command lines for both challenges. Adding the flag `--report` will work only when ground-truth (labels) are given for the test (might need to review the inference code as there are slight conditions for the test path). It is useful for validation to generate a report for the inference. It works on both single and ensemble model by the flag `--ensemble`, where this flag (for the ensemble) searchs in the folds directory for the models. For multi-class problem, it is also important to add the flag `--multi`, but must not be added for the binary problem. Finally, to visualize and save the attention maps (from attention map 1 - you can modify the code easily to save attention map 2) from all of the models, you can add `--gradcam` flag.
+
+Also, two combination approaches were developed, both majority voting (default), and weighted voting. To use weighted voting, add the following flag with the value `--combination_strategy "weighted_voting"`.
+
+Take note that the `--timeframe` flag is the folder name for the model experiment run, this must be changed to your folder name once the training is over. An example is shown below.
+
+To run inference on the validation set for the binary class problem (challenge 1):
+```
+# doesn't save the attention maps visualization, uses majority voting.
+python ./inference.py --test_path "../datasets/challenge1/val" \
+            --experiment_name "ClassifierSegExperimentCV" \
+            --network_name "VGG16_BN_Attention" \
+            --max_epochs "50" \
+            --base_lr "0.00001" \
+            --batch_size "32" \
+            --timeframe "2023-12-24_2131" \
+            --verbose "2" \
+            --ensemble \
+            --report
+```
+
+To run inference on the validation set for the multi-class problem (challenge 2):
+```
+# doesn't save the attention maps visualization, uses majority voting.
+python ./inference.py --test_path "../datasets/challenge2/val" \
+            --experiment_name "ClassifierSegExperimentCV" \
+            --network_name "VGG16_BN_Attention" \
+            --max_epochs "50" \
+            --base_lr "0.00001" \
+            --batch_size "32" \
+            --timeframe "2023-12-29_0940" \
+            --verbose "2" \
+            --multi \
+            --ensemble \
+            --report
 ```
