@@ -9,9 +9,12 @@ from loguru import logger
 from data_prep.dataset import Dataset 
 from data_prep.dataset_loader import LoadData
 from glob import glob
+import torchvision.utils as utils
+from torchvision import transforms
 
 # importing utilities
 from utils.utils import seeding, load_model, pprint_objects
+from utils.attention import visualize_attn
 from networks.NetworkController import getNetwork
 from networks.VGG16 import VGG16_BN_Attention
 from experiments.ClassifierController import getExperiment
@@ -40,6 +43,41 @@ config = {
 }
 logger.configure(**config)
 
+def calculate_model_accuracies(models, validation_dataloader, device):
+    '''
+    Calculates the accuracies of the models on the validation set to obtain the weights for Weighted Voting (Soft Voting).
+
+    Args:
+        models (list): List of models.
+        validation_dataloader (torch.utils.data.DataLoader): Validation set dataloader.
+        device (torch.device): Device to run the models on.
+
+    Returns:
+        accuracies (list): List of accuracies for each model.
+    '''
+    accuracies = []
+
+    with torch.no_grad():
+        for model in tqdm(models, desc="Calculating Accuracies"):            
+            y_true = []
+            y_pred = []
+
+            for images, labels in validation_dataloader:
+                images, labels = images.to(device), labels.to(device)
+                
+                output, _, _ = model(images)
+                probs = F.softmax(output, dim=1)
+                predictions = torch.argmax(probs, dim=1)
+
+                y_true.extend(labels.cpu().numpy())
+                y_pred.extend(predictions.cpu().numpy())
+
+            accuracy = accuracy_score(y_true, y_pred)
+            accuracies.append(accuracy)
+
+    return accuracies
+
+
 if __name__ == "__main__":
     # optional arguments from the command line 
     parser = argparse.ArgumentParser()
@@ -58,6 +96,9 @@ if __name__ == "__main__":
     parser.add_argument("--multi", action='store_true', help='if True, we use the 3 class labels for loading the data.')
     parser.add_argument("--report", action='store_true', help='if True, we evaluate the model on the available labels and save the report.')
     parser.add_argument("--ensemble", action='store_true', help='if True, we search in the folds to evaluate the ensemble.')
+    parser.add_argument("--combination_strategy", type=str, default='majority_vote', help='combination strategy for the ensemble [majority_vote, weighted_voting]')
+    parser.add_argument("--upscale_factor", type=int, default=8, help='upscale factor for the masks used in the training. Default=8')
+    parser.add_argument("--gradcam", action='store_true', help='if True, we save gradcam results for the (first model if ensemble / base model).')
 
     # get cmd args from the parser 
     args = parser.parse_args()
@@ -82,16 +123,18 @@ if __name__ == "__main__":
     if len(models_paths) == 0:
         logger.info(f"No models found in {output_path}. Exiting...")
         sys.exit(0)
-    logger.info(f"Found {len(models_paths)} models. Starting loading the models.")
+    logger.info(f"Found {len(models_paths)} models.")
 
     # load the data
     if not "test" in args.test_path:
         if args.multi:
             logger.info(f"Loading data with 3 class labels from {args.test_path} path...")
             _labels = {'mel': 0, 'bcc': 1, 'scc': 2}
+            _challenge_type = 'ch2'
         else:
             logger.info(f"Loading data with 2 class labels from {args.test_path} path...")
             _labels = {'nevus': 0, 'others': 1}
+            _challenge_type = 'ch1'
     else:
         logger.info(f"Loading data with unknown class labels from {args.test_path} path...")
         # random labels to test
@@ -99,8 +142,11 @@ if __name__ == "__main__":
         # of the labels dictionary
         if args.multi:
             _labels = {'testX': -911, 'testY': -922, 'testZ': -933}
+            _challenge_type = 'ch2'
         else:
             _labels = {'testX': -911, 'testY': -922}
+            _challenge_type = 'ch1'
+        
 
     logger.info(f"Dataset labels: {_labels} dictionary.")
 
@@ -131,6 +177,35 @@ if __name__ == "__main__":
 
     # set the correct device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # check the combination strategy, if it is weighted voting, we need to load the validation data to obtain the weights
+    if args.combination_strategy == 'weighted_voting':
+        logger.info(f"Combination strategy is {args.combination_strategy}. Loading validation data to obtain the weights...")
+        # construct the val path
+        args.val_path = args.test_path.replace("test", "val")
+        logger.info("args.val_path: ", args.val_path)
+
+        if args.multi:
+            logger.info(f"Loading data with 3 class labels from {args.test_path} path...")
+            _val_labels = {'mel': 0, 'bcc': 1, 'scc': 2}
+        else:
+            logger.info(f"Loading data with 2 class labels from {args.test_path} path...")
+            _val_labels = {'nevus': 0, 'others': 1}
+        logger.info(f"Dataset _val_labels: {_val_labels} dictionary.")
+
+        _, val_images, _, val_labels, val_n_classes = LoadData(
+            dataset_path= args.val_path, 
+            class_labels = _val_labels)
+
+        val_dataset = Dataset(
+            images_path=val_images, labels=val_labels, transform=True, split="val",
+            input_size=(args.img_size,args.img_size))
+        
+        val_dataloader = torch.utils.data.DataLoader(
+            val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+        
+        # log the length of the dataset
+        logger.info(f"Dataset `val_dataset` length: {len(val_dataset)}")
     
     # loading the models
     models = [network(num_classes=n_classes).to(device) for _ in range(len(models_paths))]
@@ -146,7 +221,7 @@ if __name__ == "__main__":
 
     # iterate over the test data
     with torch.no_grad():
-        for images, labels in tqdm(test_dataloader, desc="Inference"):
+        for batch_idx, (images, labels) in enumerate(tqdm(test_dataloader, desc="Inference")):
             images, labels = images.to(device), labels.to(labels)
 
             # get the true labels
@@ -155,49 +230,100 @@ if __name__ == "__main__":
             # iterate over the models
             for j, model in enumerate(models):
                 # get the predictions
-                output, _, _ = model(images)
+                output, a1, a2 = model(images)
                 probs = F.softmax(output, dim=1)
                 predictions = torch.argmax(probs, dim=1)
 
                 all_predictions[j].extend(predictions.cpu().numpy())
                 all_probabilities[j].extend(probs.cpu().numpy())
-                
+
+                # save the gradcam results for the first model only
+                if args.gradcam:
+                    I_val = utils.make_grid(images[0:16,:,:,:], nrow=4, normalize=True, scale_each=True)
+
+                    attn1 = visualize_attn(I_val, a1[0:16,:,:,:], up_factor=args.upscale_factor, nrow=4)
+                    # attn2 = visualize_attn(I_val, a2[0:16,:,:,:], up_factor=2*args.upscale_factor, nrow=4)
+
+                    # Convert the result tensor to a PIL Image
+                    attn1_image = transforms.ToPILImage()(attn1)
+                    # attn2_image = transforms.ToPILImage()(attn2)
+
+                    # Save the attention maps
+                    att_output_dir = os.path.join(output_path, f'gradcam_{args.test_path.split("/")[-1]}')
+                    os.makedirs(att_output_dir, exist_ok=True)
+
+                    attn1_image.save(os.path.join(att_output_dir, f'attn1_model={j}_batch={batch_idx}.png'))
+                    # attn2_image.save(os.path.join(att_output_dir, f'attn2_model={j}_batch={batch_idx}.png'))
+
+
     # convert the predictions to numpy array
     all_predictions = np.array(all_predictions)
     all_probabilities = np.array(all_probabilities)
 
+    logger.info(f"all_predictions shape: {all_predictions.shape}")
+    logger.info(f"all_probabilities shape: {all_probabilities.shape}")
+
     # convert the true labels to numpy array only for validation where we have the labels
     true_labels = np.array(true_labels) if args.report else None
 
-    # get the majority vote
-    majority_vote, _ = mode(all_predictions, axis=0)
+    # check the combination strategy
+    if args.combination_strategy == 'weighted_voting':
+        logger.info(f"Combination strategy is {args.combination_strategy}. Computing the weighted voting...")
+        # Calculate model accuracies on the validation set
+        validation_accuracies = calculate_model_accuracies(models, val_dataloader, device)
+        logger.info(f"Validation accuracies: {validation_accuracies}")
 
-    # get the average probabilities
-    avg_probabilities = np.mean(all_probabilities, axis=0)
+        # Define weights based on validation accuracies
+        weights = [accuracy / sum(validation_accuracies) for accuracy in validation_accuracies]
+        logger.info(f"Validation weights: {weights}")
+
+        # Calculate weighted voting (soft voting)
+        avg_probabilities  = np.average(all_probabilities, axis=0, weights=weights)
+        
+        # Get the class index with the maximum probability for each sample
+        ensemble_pred = np.argmax(avg_probabilities, axis=1)
+
+        # Calculate the weighted average of probabilities
+        # avg_probabilities = np.average(all_probabilities, axis=0, weights=weights)
+
+        # key to add into the filename
+        strategy_key = 'weighted_voting'
+
+    else:
+        logger.info(f"Combination strategy is {args.combination_strategy}. Computing the majority vote...")
+        # get the majority vote
+        ensemble_pred, _ = mode(all_predictions, axis=0)
+
+        # get the average probabilities
+        avg_probabilities = np.mean(all_probabilities, axis=0)
+        logger.info(f"Average probabilities: {avg_probabilities}")
+
+        # key to add into the filename
+        strategy_key = 'majority_vote'
 
     # export the results into a csv file
-    result_df = pd.DataFrame({'Majority_Vote': majority_vote})
-    output_csv_path = os.path.join(output_path, f'{args.test_path.split("/")[-1]}_{args.experiment_name}_{args.img_size}_epo{args.max_epochs}_bs{args.batch_size}_lr{args.base_lr}_s{args.seed}_{args.timeframe}_{args.network_name}.csv')
+    result_df = pd.DataFrame({'ensemble_pred': ensemble_pred})
+    output_csv_path = os.path.join(output_path, f'{_challenge_type}_{strategy_key}_{args.test_path.split("/")[-1]}_{args.experiment_name}_{args.img_size}_epo{args.max_epochs}_bs{args.batch_size}_lr{args.base_lr}_s{args.seed}_{args.timeframe}_{args.network_name}.csv')
     result_df.to_csv(output_csv_path, index=False, header=False)
     logger.info(f"Results exported to: {output_csv_path}")
 
     # report the results only if the report flag is True
     if args.report:
         # calculate the metrics
-        acc = accuracy_score(true_labels, majority_vote)
-        kappa = cohen_kappa_score(true_labels, majority_vote)
+        acc = accuracy_score(true_labels, ensemble_pred)
+        kappa = cohen_kappa_score(true_labels, ensemble_pred)
 
         # Compute sensitivity, specificity, precision, and recall for each target class
-        precision, recall, fscore, support = precision_recall_fscore_support(true_labels, majority_vote, labels=range(n_classes))
+        precision, recall, fscore, support = precision_recall_fscore_support(true_labels, ensemble_pred, labels=range(n_classes))
 
         # Generate a classification report
-        class_report = classification_report(true_labels, majority_vote, target_names=[str(i) for i in range(n_classes)])
+        class_report = classification_report(true_labels, ensemble_pred, target_names=[str(i) for i in range(n_classes)])
 
         # Create a 1x2 subplot for confusion matrix and ROC curve
         fig, axes = plt.subplots(1, 2, figsize=(15, 6))
 
         # Generate confusion matrix and plot it
-        conf_matrix = confusion_matrix(true_labels, majority_vote, labels=range(n_classes))
+        conf_matrix = confusion_matrix(true_labels, ensemble_pred, labels=range(n_classes))
         sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=range(n_classes), yticklabels=range(n_classes), ax=axes[0])
         axes[0].set_title('Confusion Matrix')
 
@@ -219,9 +345,9 @@ if __name__ == "__main__":
             # set the auc value to the mean of all classes auc scores
             auc_value = np.mean(auc_scores)
         else:
-            auc_value = roc_auc_score(true_labels, majority_vote)
+            auc_value = roc_auc_score(true_labels, ensemble_pred)
             # Generate ROC curve and plot it
-            fpr, tpr, thresholds = roc_curve(true_labels, majority_vote)
+            fpr, tpr, thresholds = roc_curve(true_labels, ensemble_pred)
             axes[1].plot(fpr, tpr, label=f'AUC = {auc_value:.2f}')
 
         axes[1].plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random')
