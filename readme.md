@@ -15,7 +15,7 @@ Table of Contents
    * [Lesion Segmentation](#lesion-segmentation)
    * [Base Architecture](#base-architecture)
    * [Ensemble Architecture](#ensemble-architecture)
-   * [Grad-CAM](#grad-cam)
+   * [Visualize Attention Maps](#visualize-attention-maps)
    * [Model Training](#model-training)
    * [Inference](#inference)
 <!--te-->
@@ -75,7 +75,7 @@ We took it a step further to improve the results obtained from this base model b
 
 ![](./figures/ensemble-arch.png)
 
-Grad-CAM
+Visualize Attention Maps
 ==========
 We also visualized the attention map using the same approach presented by the author cited previously. To visualize the results, you could either visualize while running the inference by adding a `-gradcam` flag to the command, or in `./notebooks/6_GradCAM_viz.ipynb` notebook.
 
