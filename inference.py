@@ -186,10 +186,10 @@ if __name__ == "__main__":
         logger.info("args.val_path: ", args.val_path)
 
         if args.multi:
-            logger.info(f"Loading data with 3 class labels from {args.test_path} path...")
+            logger.info(f"Loading data with 3 class labels from {args.val_path} path...")
             _val_labels = {'mel': 0, 'bcc': 1, 'scc': 2}
         else:
-            logger.info(f"Loading data with 2 class labels from {args.test_path} path...")
+            logger.info(f"Loading data with 2 class labels from {args.val_path} path...")
             _val_labels = {'nevus': 0, 'others': 1}
         logger.info(f"Dataset _val_labels: {_val_labels} dictionary.")
 
@@ -218,6 +218,9 @@ if __name__ == "__main__":
 
     # true labels placeholder for the loaded data
     true_labels = [] if args.report else None
+
+    # filenames
+    all_filenames = []
 
     # iterate over the test data
     with torch.no_grad():
@@ -255,6 +258,14 @@ if __name__ == "__main__":
                     attn1_image.save(os.path.join(att_output_dir, f'attn1_model={j}_batch={batch_idx}.png'))
                     # attn2_image.save(os.path.join(att_output_dir, f'attn2_model={j}_batch={batch_idx}.png'))
 
+            # get the images filenames
+            images_filenames = test_dataset.images_path[batch_idx*args.batch_size:batch_idx*args.batch_size+args.batch_size]
+
+            # get the filenames of the images from the paths
+            images_filenames = [os.path.basename(file_path)  for file_path in images_filenames]
+
+            # extend the filenames
+            all_filenames += images_filenames
 
     # convert the predictions to numpy array
     all_predictions = np.array(all_predictions)
@@ -302,7 +313,7 @@ if __name__ == "__main__":
         strategy_key = 'majority_vote'
 
     # export the results into a csv file
-    result_df = pd.DataFrame({'ensemble_pred': ensemble_pred})
+    result_df = pd.DataFrame({'ensemble_pred': ensemble_pred, 'filenames': all_filenames})
     output_csv_path = os.path.join(output_path, f'{_challenge_type}_{strategy_key}_{args.test_path.split("/")[-1]}_{args.experiment_name}_{args.img_size}_epo{args.max_epochs}_bs{args.batch_size}_lr{args.base_lr}_s{args.seed}_{args.timeframe}_{args.network_name}.csv')
     result_df.to_csv(output_csv_path, index=False, header=False)
     logger.info(f"Results exported to: {output_csv_path}")
