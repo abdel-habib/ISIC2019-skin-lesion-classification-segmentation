@@ -56,7 +56,8 @@ Note that the `skin_hairs` folder doesn't contain any other internal folders, bu
 
 Skin Hair Dataset
 ===============
-Hair augmentation is a crutial step that is implemented during the dataset transform/augmentation pipeline. The skin hair was manually augmented from 5 different samples to be used randomly during the augmentation. The segmentation was done manually and the process is summarised in the figures below. To have an access to the dataset, you can find the QR code that will redirect to the Drive download link in the project defense powerpoint in this repository.
+Hair augmentation is a crutial step that is implemented during the dataset transform/augmentation pipeline. The skin hair was manually augmented from 5 different samples to be used randomly during the augmentation. The segmentation was done manually and the process is summarised in the figures below. To have an access to the dataset, you can download it by accessing this drive [link](https://drive.google.com/drive/u/1/folders/1eNltv3y3yea7wx6mPUag8VvydgJss_mb).
+.
 
 ![](./figures/hair-aug-1.png)
 ![](./figures/hair-aug-2.png)
