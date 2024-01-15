@@ -48,9 +48,3 @@ class EfficientNetMel(nn.Module):
         """
         return self.model(x)
     
-# if __name__ == "__main__":
-#     EfficientNetMel()
-
-
-
-    
