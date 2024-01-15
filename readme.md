@@ -224,9 +224,9 @@ Both ensembles were trained with the following configurations below.
 | K-folds | 5 |
 | N Models used for prediction | 3 |
 | Batch Size | 32 |
-| Segmentation Masks | True |
-| Augmentation (all + hair) | True |
+| Segmentation Masks | Used |
+| Augmentation (all + hair) | Used |
 | Network Name | VGG16_BN_Attention |
 | Experiment Name | ClassifierSegExperimentCV |
-| Ensemble | `--ensemble` (true) |
+| Ensemble | `--ensemble` (True) |
 
