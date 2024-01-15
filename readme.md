@@ -87,10 +87,43 @@ We also visualized the attention map using the same approach presented by the au
 
 Model Training
 ===========
-To train the model, you could either run the following command as in the notebooks from a command line, or from a notebook as the developed examples. Take note that this will take extremely long time if GPU doesn't exist.
+To train the model, you could either run the following command as in the notebooks from a command line, or from a notebook as the developed examples. Take note that this will take extremely long time if GPU doesn't exist. To use the command line, you can use it with the following arguments, using `--help`:
 
-To train the base model for the binary problem (challenge 1):
+```python
+usage: train.py [-h] [--train_path TRAIN_PATH] [--valid_path VALID_PATH] [--train_masks_path TRAIN_MASKS_PATH] [--output OUTPUT] [--experiment_name EXPERIMENT_NAME]
+                [--network_name NETWORK_NAME] [--max_epochs MAX_EPOCHS] [--batch_size BATCH_SIZE] [--base_lr BASE_LR] [--patience PATIENCE] [--img_size IMG_SIZE]
+                [--seed SEED] [--verbose VERBOSE] [--normalize_attn] [--focal_loss] [--multi]
+
+options:
+  -h, --help            show this help message and exit
+  --train_path TRAIN_PATH
+                        root dir for training data
+  --valid_path VALID_PATH
+                        root dir for validation data
+  --train_masks_path TRAIN_MASKS_PATH
+                        (Optional) root dir for training masks data. Default = None
+  --output OUTPUT       output dir for saving results
+  --experiment_name EXPERIMENT_NAME
+                        experiment name
+  --network_name NETWORK_NAME
+                        network name
+  --max_epochs MAX_EPOCHS
+                        maximum epoch number to train
+  --batch_size BATCH_SIZE
+                        batch_size per gpu
+  --base_lr BASE_LR     network learning rate
+  --patience PATIENCE   patience for lr and early stopping scheduler
+  --img_size IMG_SIZE   input image size of network input
+  --seed SEED           random seed value
+  --verbose VERBOSE     verbose value [0:2]
+  --normalize_attn      if True, attention map is normalized by softmax; otherwise use sigmoid. This is only for certain networks.
+  --focal_loss          if True, focal loss is used; otherwise use cross entropy loss. This is only for multi-class classification.
+  --multi               if True, we use the 3 class labels for loading the data.
+
 ```
+
+For example, to train the base model for the binary problem (challenge 1):
+```python
 python ./train.py --train_path "../datasets/challenge1/train" \
             --train_masks_path "../datasets_masks/challenge1/train" \
             --valid_path "../datasets/challenge1/val" \
@@ -102,24 +135,8 @@ python ./train.py --train_path "../datasets/challenge1/train" \
             --verbose "2"
 ```
 
-To train the ensemble for the binary problem (challenge 1):
-```
-python ./train_cv.py --train_path "../datasets/challenge1/train" \
-            --train_masks_path "../datasets_masks/challenge1/train" \
-            --valid_masks_path "../datasets_masks/challenge1/val"\
-            --valid_path "../datasets/challenge1/val" \
-            --experiment_name "ClassifierSegExperimentCV" \
-            --network_name "VGG16_BN_Attention" \
-            --max_epochs "50" \
-            --base_lr "0.00001" \
-            --num_folds "5" \
-            --batch_size "32" \
-            --verbose "2"
-```
-
-
-To train the base model for the multi-class problem (challenge 2):
-```
+Same for challenge 2 that is multi-class problem, to train the base model:
+```python
 python ./train.py --train_path "../datasets/challenge2/train" \
             --train_masks_path "../datasets_masks/challenge2/train" \
             --valid_path "../datasets/challenge2/val" \
@@ -133,8 +150,60 @@ python ./train.py --train_path "../datasets/challenge2/train" \
             --multi
 ```
 
-To train the ensemble for the multi-class problem (challenge 2):
+As for the ensemble, there are additional arguments that are needed, otherwise the default values will be used. The ensemble arguments are listed below:
+```python
+usage: train_cv.py [-h] [--train_path TRAIN_PATH] [--valid_path VALID_PATH] [--train_masks_path TRAIN_MASKS_PATH] [--valid_masks_path VALID_MASKS_PATH]
+                   [--output OUTPUT] [--experiment_name EXPERIMENT_NAME] [--network_name NETWORK_NAME] [--max_epochs MAX_EPOCHS] [--batch_size BATCH_SIZE]
+                   [--base_lr BASE_LR] [--patience PATIENCE] [--img_size IMG_SIZE] [--seed SEED] [--verbose VERBOSE] [--normalize_attn] [--num_folds NUM_FOLDS]
+                   [--focal_loss] [--multi]
+
+options:
+  -h, --help            show this help message and exit
+  --train_path TRAIN_PATH
+                        root dir for training data
+  --valid_path VALID_PATH
+                        root dir for validation data
+  --train_masks_path TRAIN_MASKS_PATH
+                        (Optional) root dir for training masks data. Default = None
+  --valid_masks_path VALID_MASKS_PATH
+                        (Optional) root dir for validation masks data. Must be passed when the train masks are used. Default is None.
+  --output OUTPUT       output dir for saving results
+  --experiment_name EXPERIMENT_NAME
+                        experiment name
+  --network_name NETWORK_NAME
+                        network name
+  --max_epochs MAX_EPOCHS
+                        maximum epoch number to train
+  --batch_size BATCH_SIZE
+                        batch_size per gpu
+  --base_lr BASE_LR     network learning rate
+  --patience PATIENCE   patience for lr and early stopping scheduler
+  --img_size IMG_SIZE   input image size of network input
+  --seed SEED           random seed value
+  --verbose VERBOSE     verbose value [0:2]
+  --normalize_attn      if True, attention map is normalized by softmax; otherwise use sigmoid. This is only for certain networks.
+  --num_folds NUM_FOLDS
+                        number of folds for cross-validation. This will build a model for each fold.
+  --focal_loss          if True, focal loss is used; otherwise use cross entropy loss. This is only for multi-class classification.
+  --multi               if True, we use the 3 class labels for loading the data.
 ```
+
+To train the ensemble for the binary problem (challenge 1):
+```python
+python ./train_cv.py --train_path "../datasets/challenge1/train" \
+            --train_masks_path "../datasets_masks/challenge1/train" \
+            --valid_masks_path "../datasets_masks/challenge1/val"\
+            --valid_path "../datasets/challenge1/val" \
+            --experiment_name "ClassifierSegExperimentCV" \
+            --network_name "VGG16_BN_Attention" \
+            --max_epochs "50" \
+            --base_lr "0.00001" \
+            --num_folds "5" \
+            --batch_size "32" \
+            --verbose "2"
+```
+To train the ensemble for the multi-class problem (challenge 2):
+```python
 python ./train_cv.py \
             --train_path "../datasets/challenge2/train" \
             --train_masks_path "../datasets_masks/challenge2/train" \
@@ -160,7 +229,7 @@ Also, two combination approaches were developed, both majority voting (default),
 Take note that the `--timeframe` flag is the folder name for the model experiment run, this must be changed to your folder name once the training is over. An example is shown below.
 
 To run inference on the validation set for the binary class problem (challenge 1):
-```
+```python
 # doesn't save the attention maps visualization, uses majority voting.
 python ./inference.py --test_path "../datasets/challenge1/val" \
             --experiment_name "ClassifierSegExperimentCV" \
@@ -175,7 +244,7 @@ python ./inference.py --test_path "../datasets/challenge1/val" \
 ```
 
 To run inference on the validation set for the multi-class problem (challenge 2):
-```
+```python
 # doesn't save the attention maps visualization, uses majority voting.
 python ./inference.py --test_path "../datasets/challenge2/val" \
             --experiment_name "ClassifierSegExperimentCV" \
