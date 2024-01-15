@@ -15,6 +15,7 @@ Table of Contents
    * [Model Training](#model-training)
    * [Inference](#inference)
    * [Validation Results](#validation-results)
+   * [References](#references)
 <!--te-->
 
 
@@ -229,4 +230,8 @@ Both ensembles were trained with the following configurations below.
 | Network Name | VGG16_BN_Attention |
 | Experiment Name | ClassifierSegExperimentCV |
 | Ensemble | `--ensemble` (True) |
+
+References
+=========
+[1] Yan, Y., Kawahara, J., & Hamarneh, G. (2019). Melanoma recognition via visual attention. In Information Processing in Medical Imaging: 26th International Conference, IPMI 2019, Hong Kong, China, June 2–7, 2019, Proceedings 26 (pp. 793-804). Springer International Publishing.
 
