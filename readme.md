@@ -191,7 +191,9 @@ python ./inference.py --test_path "../datasets/challenge2/val" \
 
 Validation Results
 ===========
-As we don't have the test labels, we evaluated our best models using the validation set. For the two problems, both binary and multi-class, the ensemble approaches resulted in higher metrics compared to single model. For the binary challenge, the results are reported int the table below. 
+As we don't have the test labels, we evaluated our best models using the validation set. For the two problems, both binary and multi-class, the ensemble approaches resulted in higher metrics compared to single model. 
+
+For the binary challenge, the results obtained are reported in the tables below. 
 
 | Metric | Value |
 | --- | --- |
@@ -201,7 +203,19 @@ As we don't have the test labels, we evaluated our best models using the validat
 | Target 0 Sensitivity | 96.1160|
 | Target 1 Sensitivity | 91.7962| 
 
-The configurations used to obtain such results are summarized below.
+As for the multi-class challenge, the results obtained are reported in the tables below.
+
+
+| Metric | Value |
+| --- | --- |
+| Accuracy | 97.7165 |
+| AUC | 99.8283 |
+| Kappa | 95.9136 |
+| Target 0 Sensitivity | 98.0826 |
+| Target 1 Sensitivity | 97.5904 |
+| Target 2 Sensitivity | 95.7447 |
+
+Both ensembles were trained with the following configurations below.
 
 | Configurations | Value |
 | --- | --- |
@@ -214,5 +228,5 @@ The configurations used to obtain such results are summarized below.
 | Augmentation (all + hair) | True |
 | Network Name | VGG16_BN_Attention |
 | Experiment Name | ClassifierSegExperimentCV |
-| Ensemble | --ensemble (true) |
+| Ensemble | `--ensemble` (true) |
 
