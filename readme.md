@@ -2,15 +2,11 @@
 
 <h3 align="center">A full skin lesion segmentation and classification pipeline for ISIC2019 dataset.</h3>
 
-
-![](./figures/augmentation.png)
-
-
 Table of Contents
 =================
 
 <!--ts-->
-   * [Dataset Structure](#dataset-structure)
+   * [Project Setup](#project-setup)
    * [Skin Hair Dataset](#skin-hair-dataset)
    * [Lesion Segmentation](#lesion-segmentation)
    * [Base Architecture](#base-architecture)
@@ -18,26 +14,30 @@ Table of Contents
    * [Visualize Attention Maps](#visualize-attention-maps)
    * [Model Training](#model-training)
    * [Inference](#inference)
+   * [Validation Results](#validation-results)
 <!--te-->
 
 
-
-Dataset Structure
+Project Setup
 ============
+To run the project, it is recommended to setup a vitual environment and install all the packages inside the `requirements.txt` file. Having that done, the project also requires a specific structure of the dataset directory. The dataset can be structured as following:   
+
 ```
 .
 ├── .
-├── datasets                      # Dataset directory.
-    └── challenge1                # Challenge 1 (Binary) dataset.
+├── datasets                        # Dataset directory.
+    └── challenge1                  # Challenge 1 (Binary) dataset.
         ├── test
-            └── testX
+            └── testX  
+                └── xxx00001.jpg    # test images
         ├── train
-            ├── nevus
+            ├── nevus               # class name, has to be exactly the same, otherwise some modifications might be required.
+                └── nev00001.jpg    # images for this class
             └── others
         └── val
             ├── nevus
             └── others
-    ├── challenge2              # Challenge 2 (Multi-class) dataset.
+    ├── challenge2                  # Challenge 2 (Multi-class) dataset.
         ├── test
             └── testX
         ├── train
@@ -50,6 +50,8 @@ Dataset Structure
             └── scc
     └── skin_hairs 
 ```
+
+Note that the `skin_hairs` folder doesn't contain any other internal folders, but only the skin hair images used in the augmentation. 
 
 Skin Hair Dataset
 ===============
@@ -186,3 +188,31 @@ python ./inference.py --test_path "../datasets/challenge2/val" \
             --ensemble \
             --report
 ```
+
+Validation Results
+===========
+As we don't have the test labels, we evaluated our best models using the validation set. For the two problems, both binary and multi-class, the ensemble approaches resulted in higher metrics compared to single model. For the binary challenge, the results are reported int the table below. 
+
+| Metric | Value |
+| --- | --- |
+| Accuracy | 93.9937 |
+| AUC | 93.9561 |
+| Kappa | 87.9751 |
+| Target 0 Sensitivity | 96.1160|
+| Target 1 Sensitivity | 91.7962| 
+
+The configurations used to obtain such results are summarized below.
+
+| Configurations | Value |
+| --- | --- |
+| Epochs | 50 |
+| Learning Rate | 0.00001 |
+| K-folds | 5 |
+| N Models used for prediction | 3 |
+| Batch Size | 32 |
+| Segmentation Masks | True |
+| Augmentation (all + hair) | True |
+| Network Name | VGG16_BN_Attention |
+| Experiment Name | ClassifierSegExperimentCV |
+| Ensemble | --ensemble (true) |
+
