@@ -193,7 +193,7 @@ Validation Results
 ===========
 As we don't have the test labels, we evaluated our best models using the validation set. For the two problems, both binary and multi-class, the ensemble approaches resulted in higher metrics compared to single model. 
 
-For the binary challenge, the results obtained are reported in the tables below. 
+For the binary challenge, the results obtained are reported in the table below. 
 
 | Metric | Value |
 | --- | --- |
@@ -203,7 +203,7 @@ For the binary challenge, the results obtained are reported in the tables below.
 | Target 0 Sensitivity | 96.1160|
 | Target 1 Sensitivity | 91.7962| 
 
-As for the multi-class challenge, the results obtained are reported in the tables below.
+As for the multi-class challenge, the results obtained are reported in the table below.
 
 
 | Metric | Value |
