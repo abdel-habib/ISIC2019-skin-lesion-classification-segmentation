@@ -2,7 +2,8 @@
 
 <h3 align="center">A full skin lesion segmentation and classification pipeline for ISIC2019 dataset.</h3>
 
-This repository contains the code developed for the final project in Computer Aided Diagnosis (CAD) course as part of the Join Masters Degree in Medical Imaging and Aplications (MAIA).
+This repository contains the code developed for the final project in Computer Aided Diagnosis (CAD) course as part of the Join Masters Degree in Medical Imaging and Aplications (MAIA), coordinated by the University of Girona (UdG, Spain) and with the University of Bourgogne (uB, France) and the Università degli studi di Cassino e del Lazio Meridionale (UNICAS, Italy) as partners.
+
 
 Table of Contents
 =================
